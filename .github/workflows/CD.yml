@@ -1,0 +1,86 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches: [ main ]
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/devine-ai
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: docker/setup-buildx-action@v3
+
+    # Docker Hub 로그인
+    - uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKER_IMAGE }}
+        tags: |
+          type=raw,value=latest
+          type=sha,prefix={{branch}}-
+
+    - uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # EC2 배포
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_SSH_PORT }}
+        script: |
+          cd ~/Devine_Deploy/service
+
+          # 최신 배포 스크립트 가져오기
+          git pull origin main
+
+          # S3에서 환경변수 다운로드
+          aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/config/.env .env
+          [ ! -f .env ] && exit 1
+
+          # 최신 이미지 pull
+          docker pull ${{ env.DOCKER_IMAGE }}:latest
+
+          # AI 컨테이너 재시작
+          docker-compose up -d --no-deps ai
+
+          # 헬스체크 (Docker HEALTHCHECK 활용)
+          timeout=60
+          until [ "$(docker inspect --format='{{.State.Health.Status}}' $(docker-compose ps -q ai))" = "healthy" ]; do
+            timeout=$((timeout - 2))
+            [ $timeout -le 0 ] && docker-compose logs ai && exit 1
+            sleep 2
+          done
+
+          # 오래된 이미지 정리 (7일 이상)
+          docker image prune -af --filter "until=168h"
