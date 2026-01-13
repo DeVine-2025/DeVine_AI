@@ -68,19 +68,42 @@ jobs:
           aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/config/.env .env
           [ ! -f .env ] && exit 1
 
-          # 최신 이미지 pull
-          docker pull ${{ env.DOCKER_IMAGE }}:latest
+          IMAGE="${{ secrets.DOCKER_USERNAME }}/devine-ai"
 
-          # AI 컨테이너 재시작
+          # 1. 현재 이미지 백업 (롤백용)
+          docker tag ${IMAGE}:latest ${IMAGE}:previous 2>/dev/null || true
+
+          # 2. 최신 이미지 pull
+          docker pull ${IMAGE}:latest
+
+          # 3. AI 컨테이너 재시작
           docker-compose up -d --no-deps ai
 
-          # 헬스체크 (Docker HEALTHCHECK 활용)
-          timeout=60
-          until [ "$(docker inspect --format='{{.State.Health.Status}}' $(docker-compose ps -q ai))" = "healthy" ]; do
-            timeout=$((timeout - 2))
-            [ $timeout -le 0 ] && docker-compose logs ai && exit 1
+          # 4. 헬스체크 (실패 시 롤백)
+          CONTAINER_ID=$(docker-compose ps -q ai)
+          TIMEOUT=60
+          HEALTHY=false
+
+          while [ $TIMEOUT -gt 0 ]; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' $CONTAINER_ID 2>/dev/null || echo "starting")
+            if [ "$STATUS" = "healthy" ]; then
+              HEALTHY=true
+              break
+            fi
             sleep 2
+            TIMEOUT=$((TIMEOUT - 2))
           done
 
-          # 오래된 이미지 정리 (7일 이상)
-          docker image prune -af --filter "until=168h"
+          # 5. 헬스체크 실패 시 롤백
+          if [ "$HEALTHY" = "false" ]; then
+            echo "Health check failed, rolling back..."
+            docker-compose logs ai
+            docker tag ${IMAGE}:previous ${IMAGE}:latest
+            docker-compose up -d --no-deps ai
+            exit 1
+          fi
+
+          echo "AI Deployment successful!"
+
+          # 6. 오래된 이미지 정리 (7일 이상)
+          docker image prune -f --filter "until=168h"
