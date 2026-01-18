@@ -105,5 +105,5 @@ jobs:
 
           echo "AI Deployment successful!"
 
-          # 6. 오래된 이미지 정리 (7일 이상)
-          docker image prune -f --filter "until=168h"
+          # 6. 사용하지 않는 이미지 정리
+          docker image prune -af
