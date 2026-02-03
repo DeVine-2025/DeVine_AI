@@ -1,2 +1,11 @@
 fastapi>=0.124.0,<0.125.0
 uvicorn[standard]
+openai>=1.0.0
+gitpython==3.1.46
+httpx==0.28.1
+requests==2.32.5
+pydantic==2.12.5
+pydantic-settings>=2.0.0
+google-generativeai==0.8.6
+python-dotenv>=1.0.0
+tenacity>=8.0.0
