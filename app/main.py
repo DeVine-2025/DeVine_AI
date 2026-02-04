@@ -7,7 +7,7 @@ from app.middlewares.error_handler import add_exception_handlers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-app = FastAPI(title="DeVine AI Server", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="DeVine AI Server", version="1.0.0")
 
 
 @asynccontextmanager
