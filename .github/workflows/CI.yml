@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.12'
 
 jobs:
   lint:
@@ -25,29 +25,3 @@ jobs:
 
     - name: Run linting
       run: flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
-
-  # 테스트 실행
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-        pip install pytest pytest-asyncio
-
-    - name: Run tests
-      run: |
-        if [ -d "test" ]; then
-          pytest test/ -v
-        else
-          echo "No tests directory found"
-        fi

@@ -77,10 +77,11 @@ jobs:
           docker pull ${IMAGE}:latest
 
           # 3. AI 컨테이너 재시작
-          docker-compose up -d --no-deps ai
+          docker rm -f devine-ai 2>/dev/null || true
+          docker compose up -d --no-deps ai
 
           # 4. 헬스체크 (실패 시 롤백)
-          CONTAINER_ID=$(docker-compose ps -q ai)
+          CONTAINER_ID=$(docker compose ps -q ai)
           TIMEOUT=60
           HEALTHY=false
 
@@ -97,9 +98,14 @@ jobs:
           # 5. 헬스체크 실패 시 롤백
           if [ "$HEALTHY" = "false" ]; then
             echo "Health check failed, rolling back..."
-            docker-compose logs ai
+            docker compose logs ai
+            
+            # 실패한 망가진 컨테이너 삭제
+            docker rm -f devine-ai 2>/dev/null || true
+            
+            # 이전 이미지로 복구 및 재실행
             docker tag ${IMAGE}:previous ${IMAGE}:latest
-            docker-compose up -d --no-deps ai
+            docker compose up -d --no-deps ai
             exit 1
           fi
 
