@@ -1,6 +1,8 @@
 import logging
 
 from fastapi import FastAPI
+from app.routes import report_route
+from app.middlewares.error_handler import add_exception_handlers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -13,6 +15,15 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     logger.info("🛑 서버 종료 중...")
+
+add_exception_handlers(app)
+
+app.include_router(
+    report_route.router,
+    prefix="/api/v1/reports",
+    tags=["Reports"]
+)
+
 
 @app.get("/health")
 async def health_check():

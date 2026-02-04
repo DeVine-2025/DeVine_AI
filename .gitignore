@@ -1,13 +1,52 @@
-.idea
-.DS_Store
-.venv
-tmp
-__pycache__
-*.pyc
-*.pyo
-/config.yaml
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# .vscode
-.vscode
-.python-version
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# Environment Variables
 .env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temp files
+temp/*
+!temp/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
