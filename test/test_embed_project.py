@@ -27,9 +27,9 @@ def client():
 
 @pytest.fixture
 def mock_embedding():
-    """EmbeddingService.create_embedding Mock"""
+    """embedding_service.create_embedding Mock"""
     with patch(
-        "app.controllers.embedding_controller.EmbeddingService.create_embedding",
+        "app.controllers.embedding_controller.embedding_service.create_embedding",
         new_callable=AsyncMock,
         return_value=MOCK_VECTOR,
     ) as mock:
