@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from app.routes import report_route
+from app.routes import report_route, embedding_route
 from app.middlewares.error_handler import add_exception_handlers
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +22,12 @@ app.include_router(
     report_route.router,
     prefix="/api/v1/reports",
     tags=["Reports"]
+)
+
+app.include_router(
+    embedding_route.router,
+    prefix="/api/v1/embeddings",
+    tags=["Embedding"]
 )
 
 
