@@ -8,6 +8,8 @@ from tenacity import (
     retry_if_exception_type,
 )
 
+from typing import List
+
 from app.configs.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ class EmbeddingService:
             f"Retry attempt {retry_state.attempt_number} after error"
         ),
     )
-    async def create_embedding(self, text: str) -> list[float]:
+    async def create_embedding(self, text: str) -> List[float]:
         """
         텍스트를 임베딩 벡터로 변환합니다.
 

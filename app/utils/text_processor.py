@@ -1,7 +1,7 @@
-from typing import Any
+from typing import Any, Dict, List
 
 
-def extract_embedding_text(report: dict[str, Any]) -> str:
+def extract_embedding_text(report: Dict[str, Any]) -> str:
     """
     리포트 JSON에서 임베딩용 요약 텍스트를 추출합니다.
 
@@ -11,7 +11,7 @@ def extract_embedding_text(report: dict[str, Any]) -> str:
     - projectInfo.techStack: 기술 스택 목록
     - keyImplementations[].title: 핵심 구현 제목들
     """
-    parts: list[str] = []
+    parts: List[str] = []
 
     # overview.summary
     overview = report.get("overview", {})

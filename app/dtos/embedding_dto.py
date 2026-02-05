@@ -1,9 +1,9 @@
-from typing import Any
+from typing import Any, Dict, List
 from pydantic import BaseModel
 
 
 class EmbeddingRequest(BaseModel):
-    report: dict[str, Any]
+    report: Dict[str, Any]
 
 
 class ProjectEmbeddingRequest(BaseModel):
@@ -11,5 +11,5 @@ class ProjectEmbeddingRequest(BaseModel):
 
 
 class EmbeddingResponse(BaseModel):
-    vector: list[float]
+    vector: List[float]
     dimension: int
