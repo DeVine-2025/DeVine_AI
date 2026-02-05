@@ -3,7 +3,7 @@ import logging
 from openai import APIError, RateLimitError, APIConnectionError
 
 from app.dtos.embedding_dto import EmbeddingRequest, ProjectEmbeddingRequest, EmbeddingResponse
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import embedding_service
 from app.utils.text_processor import extract_embedding_text
 from app.errors.exceptions import EmptyTextException, TextTooLongException, OpenAIException
 
@@ -13,9 +13,6 @@ MAX_INPUT_LENGTH = 30000
 
 
 class EmbeddingController:
-    def __init__(self):
-        self.embedding_service = EmbeddingService()
-
     async def embed_report(self, request: EmbeddingRequest) -> EmbeddingResponse:
         text = extract_embedding_text(request.report)
         return await self._create_embedding(text)
@@ -30,7 +27,7 @@ class EmbeddingController:
             raise TextTooLongException(f"입력 텍스트 길이: {len(text)}자 (최대 {MAX_INPUT_LENGTH}자)")
 
         try:
-            vector = await self.embedding_service.create_embedding(text)
+            vector = await embedding_service.create_embedding(text)
             return EmbeddingResponse(vector=vector, dimension=len(vector))
         except (APIError, RateLimitError, APIConnectionError) as e:
             logger.error(f"OpenAI API 오류: {e}")

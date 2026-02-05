@@ -52,3 +52,6 @@ class EmbeddingService:
         except APIError as e:
             logger.error(f"OpenAI API error: {e}")
             raise
+
+
+embedding_service = EmbeddingService()
