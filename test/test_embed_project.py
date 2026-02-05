@@ -2,7 +2,7 @@
 프로젝트 임베딩 API 테스트
 
 실행 방법:
-    pytest tests/test_embed_project.py -v
+    pytest test/test_embed_project.py -v
 """
 
 from unittest.mock import AsyncMock, patch

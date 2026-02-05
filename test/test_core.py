@@ -2,7 +2,7 @@
 핵심 로직 테스트 스크립트
 
 실행 방법:
-    python -m tests.test_core
+    python -m test.test_core
 
 환경 변수:
     OPENAI_API_KEY: OpenAI API 키 (.env 파일 또는 환경 변수)
