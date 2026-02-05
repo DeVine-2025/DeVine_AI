@@ -36,11 +36,6 @@ class CallbackException(AppException):
         super().__init__(500, "CALLBACK_FAILED", message)
 
 
-class EmbeddingException(AppException):
-    def __init__(self, message: str = "임베딩 생성 실패"):
-        super().__init__(500, "EMBEDDING_FAILED", message)
-
-
 class OpenAIException(AppException):
     def __init__(self, message: str = "OpenAI API 호출 실패"):
         super().__init__(500, "OPENAI_API_FAILED", message)
