@@ -21,7 +21,7 @@ load_dotenv()
 
 from app.utils.text_processor import extract_embedding_text
 from app.services.embedding_service import EmbeddingService
-from app.core.config import get_settings
+from app.configs.settings import settings
 
 # 테스트용 Mock 리포트 데이터
 MOCK_REPORT = {
@@ -87,9 +87,8 @@ async def test_embedding_service(text: str):
     print("\n[2] 임베딩 서비스 테스트")
     print("-" * 50)
 
-    settings = get_settings()
-    print(f"모델: {settings.EMBEDDING_MODEL}")
-    print(f"예상 차원: {settings.EMBEDDING_DIMENSION}")
+    print(f"모델: {settings.embedding_model}")
+    print(f"예상 차원: {settings.embedding_dimension}")
 
     service = EmbeddingService()
     vector = await service.create_embedding(text)
@@ -98,7 +97,7 @@ async def test_embedding_service(text: str):
     print(f"벡터 샘플 (처음 5개): {vector[:5]}")
     print("-" * 50)
 
-    assert len(vector) == settings.EMBEDDING_DIMENSION, f"차원이 {settings.EMBEDDING_DIMENSION}이어야 합니다"
+    assert len(vector) == settings.embedding_dimension, f"차원이 {settings.embedding_dimension}이어야 합니다"
     assert all(isinstance(v, float) for v in vector), "모든 값이 float이어야 합니다"
 
     print("임베딩 서비스 테스트 통과")

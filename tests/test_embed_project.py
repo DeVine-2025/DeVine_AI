@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app, MAX_INPUT_LENGTH
+from app.main import app
+from app.controllers.embedding_controller import MAX_INPUT_LENGTH
 
 
 # Mock 벡터 생성 (1536차원)
@@ -28,7 +29,7 @@ def client():
 def mock_embedding():
     """EmbeddingService.create_embedding Mock"""
     with patch(
-        "app.main.EmbeddingService.create_embedding",
+        "app.controllers.embedding_controller.EmbeddingService.create_embedding",
         new_callable=AsyncMock,
         return_value=MOCK_VECTOR,
     ) as mock:
@@ -36,12 +37,12 @@ def mock_embedding():
 
 
 class TestEmbedProject:
-    """POST /embed/project 엔드포인트 테스트"""
+    """POST /api/v1/embeddings/project 엔드포인트 테스트"""
 
     def test_embed_project_success(self, client, mock_embedding):
         """정상적인 텍스트로 임베딩 생성"""
         response = client.post(
-            "/embed/project",
+            "/api/v1/embeddings/project",
             json={"text": "[도메인: FINTECH] 금융 결제 시스템 개발 프로젝트입니다."},
         )
 
@@ -57,31 +58,31 @@ class TestEmbedProject:
     def test_embed_project_empty_text(self, client, mock_embedding):
         """빈 텍스트 에러 처리"""
         response = client.post(
-            "/embed/project",
+            "/api/v1/embeddings/project",
             json={"text": ""},
         )
 
         assert response.status_code == 400
         data = response.json()
-        assert data["error_code"] == "EMPTY_TEXT"
+        assert data["code"] == "EMPTY_TEXT"
         mock_embedding.assert_not_called()
 
     def test_embed_project_whitespace_only(self, client, mock_embedding):
         """공백만 있는 텍스트 에러 처리"""
         response = client.post(
-            "/embed/project",
+            "/api/v1/embeddings/project",
             json={"text": "   "},
         )
 
         assert response.status_code == 400
         data = response.json()
-        assert data["error_code"] == "EMPTY_TEXT"
+        assert data["code"] == "EMPTY_TEXT"
         mock_embedding.assert_not_called()
 
     def test_embed_project_missing_text_field(self, client, mock_embedding):
         """text 필드 누락 에러"""
         response = client.post(
-            "/embed/project",
+            "/api/v1/embeddings/project",
             json={},
         )
 
@@ -92,21 +93,21 @@ class TestEmbedProject:
         """텍스트 길이 초과 에러 처리"""
         long_text = "a" * (MAX_INPUT_LENGTH + 1)
         response = client.post(
-            "/embed/project",
+            "/api/v1/embeddings/project",
             json={"text": long_text},
         )
 
         assert response.status_code == 400
         data = response.json()
-        assert data["error_code"] == "TEXT_TOO_LONG"
+        assert data["code"] == "TEXT_TOO_LONG"
         mock_embedding.assert_not_called()
 
 
-class TestExistingEmbedEndpoint:
-    """기존 /embed 엔드포인트 영향 없음 확인"""
+class TestEmbedReport:
+    """POST /api/v1/embeddings/report 엔드포인트 테스트"""
 
-    def test_embed_report_still_works(self, client, mock_embedding):
-        """기존 /embed 엔드포인트 정상 동작 확인"""
+    def test_embed_report_success(self, client, mock_embedding):
+        """리포트 임베딩 정상 동작 확인"""
         mock_report = {
             "overview": {
                 "summary": "테스트 프로젝트 요약",
@@ -121,7 +122,7 @@ class TestExistingEmbedEndpoint:
         }
 
         response = client.post(
-            "/embed",
+            "/api/v1/embeddings/report",
             json={"report": mock_report},
         )
 
@@ -141,11 +142,11 @@ class TestExistingEmbedEndpoint:
         }
 
         response = client.post(
-            "/embed",
+            "/api/v1/embeddings/report",
             json={"report": mock_report},
         )
 
         assert response.status_code == 400
         data = response.json()
-        assert data["error_code"] == "TEXT_TOO_LONG"
+        assert data["code"] == "TEXT_TOO_LONG"
         mock_embedding.assert_not_called()

@@ -8,17 +8,16 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from app.core.config import get_settings
+from app.configs.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
     def __init__(self):
-        settings = get_settings()
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = settings.EMBEDDING_MODEL
-        self.dimension = settings.EMBEDDING_DIMENSION
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.model = settings.embedding_model
+        self.dimension = settings.embedding_dimension
 
     @retry(
         retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
