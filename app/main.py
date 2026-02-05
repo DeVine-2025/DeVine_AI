@@ -7,14 +7,14 @@ from app.middlewares.error_handler import add_exception_handlers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-app = FastAPI(title="DeVine AI Server", version="1.0.0")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 서버 시작 중...")
     yield
     logger.info("🛑 서버 종료 중...")
+
+app = FastAPI(title="DeVine AI Server", version="1.0.0", lifespan=lifespan)
 
 add_exception_handlers(app)
 
