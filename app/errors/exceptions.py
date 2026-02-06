@@ -34,3 +34,18 @@ class GeminiException(AppException):
 class CallbackException(AppException):
     def __init__(self, message: str = "콜백 전송 실패"):
         super().__init__(500, "CALLBACK_FAILED", message)
+
+
+class OpenAIException(AppException):
+    def __init__(self, message: str = "OpenAI API 호출 실패"):
+        super().__init__(500, "OPENAI_API_FAILED", message)
+
+
+class EmptyTextException(AppException):
+    def __init__(self, message: str = "임베딩할 텍스트가 비어있습니다"):
+        super().__init__(400, "EMPTY_TEXT", message)
+
+
+class TextTooLongException(AppException):
+    def __init__(self, message: str = "입력 텍스트가 너무 깁니다"):
+        super().__init__(400, "TEXT_TOO_LONG", message)

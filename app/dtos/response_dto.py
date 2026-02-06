@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 
 class ReportGenerationRes(BaseModel):
@@ -15,3 +15,8 @@ class CallbackReq(BaseModel):
     status: str
     content: Optional[Any] = None
     errorMessage: Optional[str] = None
+
+
+class EmbeddingRes(BaseModel):
+    vector: List[float]
+    dimension: int

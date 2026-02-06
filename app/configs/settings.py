@@ -2,8 +2,18 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Gemini (Report Generation)
     gemini_api_key: str
     temp_dir: str = "./temp"
+
+    # OpenAI (Embedding)
+    openai_api_key: str
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimension: int = 1536
+
+    # Logging
+    log_level: str = "INFO"
+    debug: bool = False
 
     class Config:
         env_file = ".env"
