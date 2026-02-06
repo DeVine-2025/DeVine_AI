@@ -10,13 +10,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# 시스템 패키지 (git)
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y --no-install-recommends git curl && \
     rm -rf /var/lib/apt/lists/*
 
+# 의존성 설치
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
+# 앱 복사
 COPY ./app ./app
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
