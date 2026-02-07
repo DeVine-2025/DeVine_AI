@@ -8,11 +8,7 @@ from app.configs.settings import settings
 
 def setup_logging() -> None:
     """애플리케이션 로깅 설정"""
-<<<<<<< Updated upstream
     log_dir = settings.log_dir
-=======
-    log_dir = os.getenv("LOG_DIR", "/app/logs")
->>>>>>> Stashed changes
     os.makedirs(log_dir, exist_ok=True)
 
     root_logger = logging.getLogger()
