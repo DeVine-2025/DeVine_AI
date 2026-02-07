@@ -3,8 +3,9 @@ import json
 import subprocess
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
-from app.dtos.request_dto import ReportGenerationReq
+from app.dtos.request_dto import ReportGenerationReq, ReportGenerationSyncReq
 from app.services.git_service import (
     clone_repository,
     cleanup_directory,
@@ -203,6 +204,57 @@ class AnalyzerService:
         )
         result = await gemini_service.analyze_code(prompt)
         return result
+
+    async def analyze_sync(self, request: ReportGenerationSyncReq) -> dict:
+        """동기식 분석 - 결과를 직접 반환"""
+        temp_dir = None
+        log_prefix = f"[detail:{request.detailReportId}, main:{request.mainReportId}]"
+        start_time = time.time()
+
+        logger.info(f"{log_prefix} 동기 분석 시작 - {request.gitUrl}")
+
+        try:
+            author_name, author_email = get_github_user_from_token(request.githubToken)
+            logger.info(f"{log_prefix} 분석 대상: {author_name} ({author_email})")
+
+            clone_start = time.time()
+            logger.info(f"{log_prefix} Git 클론 중...")
+            temp_dir = await asyncio.to_thread(
+                clone_repository, request.gitUrl, request.githubToken, settings.temp_dir
+            )
+            clone_elapsed = time.time() - clone_start
+            logger.info(f"{log_prefix} Git 클론 완료 ({clone_elapsed:.2f}초)")
+
+            analysis_start = time.time()
+            logger.info(f"{log_prefix} 기여자 분석 중...")
+            analysis_result = await self._analyze_contributor(
+                temp_dir, request.gitUrl, author_name, author_email
+            )
+            analysis_elapsed = time.time() - analysis_start
+            logger.info(f"{log_prefix} AI 분석 완료 ({analysis_elapsed:.2f}초)")
+
+            total_elapsed = time.time() - start_time
+            logger.info(f"{log_prefix} 리포트 생성 완료 - 총 소요시간: {total_elapsed:.2f}초")
+
+            return {
+                "status": "SUCCESS",
+                "content": analysis_result,
+                "errorMessage": None
+            }
+
+        except Exception as e:
+            total_elapsed = time.time() - start_time
+            logger.error(f"{log_prefix} 오류 발생 ({total_elapsed:.2f}초) - {str(e)}")
+            return {
+                "status": "FAILED",
+                "content": None,
+                "errorMessage": str(e)
+            }
+
+        finally:
+            if temp_dir:
+                cleanup_directory(temp_dir)
+                logger.info(f"{log_prefix} 임시 디렉토리 정리 완료")
 
     def _get_commit_files_quick(self, dir_path: str, commit_hash: str) -> list:
         try:

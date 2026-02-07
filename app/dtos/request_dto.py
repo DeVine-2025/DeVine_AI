@@ -16,3 +16,10 @@ class EmbeddingReq(BaseModel):
 
 class ProjectEmbeddingReq(BaseModel):
     text: str
+
+
+class ReportGenerationSyncReq(BaseModel):
+    mainReportId: int
+    detailReportId: int
+    gitUrl: str
+    githubToken: str
