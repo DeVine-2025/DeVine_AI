@@ -20,3 +20,11 @@ class CallbackReq(BaseModel):
 class EmbeddingRes(BaseModel):
     vector: List[float]
     dimension: int
+
+
+class ReportGenerationSyncRes(BaseModel):
+    mainReportId: int
+    detailReportId: int
+    status: str
+    content: Optional[Any] = None
+    errorMessage: Optional[str] = None
