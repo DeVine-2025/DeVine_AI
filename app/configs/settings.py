@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    log_dir: str = "./logs"
     debug: bool = False
 
     class Config:

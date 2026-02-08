@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.routes import report_route, embedding_route
 from app.middlewares.error_handler import add_exception_handlers
-from app.configs.settings import settings
+from app.configs.logging import setup_logging
 
-logging.basicConfig(level=settings.log_level)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
