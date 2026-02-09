@@ -4,6 +4,7 @@ import subprocess
 import asyncio
 import logging
 import time
+from typing import Union
 from dataclasses import dataclass
 from app.dtos.request_dto import ReportGenerationReq, ReportGenerationSyncReq
 from app.services.git_service import (
@@ -19,9 +20,11 @@ from app.services.git_service import (
 from app.configs.settings import settings
 from app.services.gemini_service import gemini_service
 from app.services.callback_service import callback_service
+from app.services.embedding_service import embedding_service
 from app.utils.file_reader import get_code_files, count_lines, count_test_files
 from app.utils.tech_detector import detect_tech_stack
 from app.utils.tree_builder import build_project_tree
+from app.utils.text_processor import extract_embedding_text
 from app.prompts.combined_report_prompt import get_combined_report_prompt
 
 logger = logging.getLogger(__name__)
@@ -110,6 +113,9 @@ class AnalyzerService:
             )
             logger.info(f"{log_prefix} 콜백 전송 완료 (SUCCESS)")
 
+            # 임베딩 생성 및 콜백 (실패해도 전체 프로세스는 계속 진행)
+            await self._create_embedding_and_callback(request, analysis_result, log_prefix)
+
         except Exception as e:
             logger.error(f"{log_prefix} 오류 발생 - {str(e)}")
             await callback_service.send_failure(
@@ -124,6 +130,44 @@ class AnalyzerService:
             if temp_dir:
                 cleanup_directory(temp_dir)
                 logger.info(f"{log_prefix} 임시 디렉토리 정리 완료")
+
+    async def _create_embedding_and_callback(
+        self,
+        request: Union[ReportGenerationReq, ReportGenerationSyncReq],
+        analysis_result: dict,
+        log_prefix: str
+    ):
+        """리포트 임베딩 생성 및 콜백 전송"""
+        try:
+            logger.info(f"{log_prefix} 임베딩 생성 중...")
+            text = extract_embedding_text(analysis_result.get("main", {}))
+
+            if not text.strip():
+                raise ValueError("임베딩할 텍스트가 비어있습니다")
+
+            vector = await embedding_service.create_embedding(text)
+            dimension = len(vector)
+            logger.info(f"{log_prefix} 임베딩 생성 완료 (dimension: {dimension})")
+
+            logger.info(f"{log_prefix} 임베딩 콜백 전송 중...")
+            await callback_service.send_embedding_success(
+                callback_url=request.embeddingCallbackUrl,
+                detail_report_id=request.detailReportId,
+                main_report_id=request.mainReportId,
+                vector=vector,
+                dimension=dimension
+            )
+            logger.info(f"{log_prefix} 임베딩 콜백 전송 완료 (SUCCESS)")
+
+        except Exception as e:
+            logger.error(f"{log_prefix} 임베딩 오류 발생 - {str(e)}")
+            await callback_service.send_embedding_failure(
+                callback_url=request.embeddingCallbackUrl,
+                detail_report_id=request.detailReportId,
+                main_report_id=request.mainReportId,
+                error_message=str(e)
+            )
+            logger.info(f"{log_prefix} 임베딩 콜백 전송 완료 (FAILED)")
 
     def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str) -> str:
         tech_stack = detect_tech_stack(dir_path)
@@ -235,6 +279,11 @@ class AnalyzerService:
 
             total_elapsed = time.time() - start_time
             logger.info(f"{log_prefix} 리포트 생성 완료 - 총 소요시간: {total_elapsed:.2f}초")
+
+            # 임베딩 생성 및 콜백 (백그라운드에서 비동기 처리)
+            asyncio.create_task(
+                self._create_embedding_and_callback(request, analysis_result, log_prefix)
+            )
 
             return {
                 "status": "SUCCESS",

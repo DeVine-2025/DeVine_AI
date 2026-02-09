@@ -7,6 +7,7 @@ class ReportGenerationReq(BaseModel):
     mainReportId: int
     gitUrl: str
     callbackUrl: str
+    embeddingCallbackUrl: str
     githubToken: str
 
 
@@ -23,3 +24,4 @@ class ReportGenerationSyncReq(BaseModel):
     detailReportId: int
     gitUrl: str
     githubToken: str
+    embeddingCallbackUrl: str
