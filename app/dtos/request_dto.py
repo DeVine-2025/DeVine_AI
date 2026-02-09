@@ -24,3 +24,4 @@ class ReportGenerationSyncReq(BaseModel):
     detailReportId: int
     gitUrl: str
     githubToken: str
+    embeddingCallbackUrl: str

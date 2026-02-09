@@ -4,6 +4,7 @@ import subprocess
 import asyncio
 import logging
 import time
+from typing import Union
 from dataclasses import dataclass
 from app.dtos.request_dto import ReportGenerationReq, ReportGenerationSyncReq
 from app.services.git_service import (
@@ -132,7 +133,7 @@ class AnalyzerService:
 
     async def _create_embedding_and_callback(
         self,
-        request: ReportGenerationReq,
+        request: Union[ReportGenerationReq, ReportGenerationSyncReq],
         analysis_result: dict,
         log_prefix: str
     ):
@@ -278,6 +279,11 @@ class AnalyzerService:
 
             total_elapsed = time.time() - start_time
             logger.info(f"{log_prefix} 리포트 생성 완료 - 총 소요시간: {total_elapsed:.2f}초")
+
+            # 임베딩 생성 및 콜백 (백그라운드에서 비동기 처리)
+            asyncio.create_task(
+                self._create_embedding_and_callback(request, analysis_result, log_prefix)
+            )
 
             return {
                 "status": "SUCCESS",
