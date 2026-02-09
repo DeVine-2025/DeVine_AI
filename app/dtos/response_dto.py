@@ -22,6 +22,15 @@ class EmbeddingRes(BaseModel):
     dimension: int
 
 
+class EmbeddingCallbackReq(BaseModel):
+    detailReportId: int
+    mainReportId: int
+    status: str
+    vector: Optional[List[float]] = None
+    dimension: Optional[int] = None
+    errorMessage: Optional[str] = None
+
+
 class ReportGenerationSyncRes(BaseModel):
     mainReportId: int
     detailReportId: int

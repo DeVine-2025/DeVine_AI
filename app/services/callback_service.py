@@ -1,6 +1,6 @@
 import httpx
-from typing import Any, Optional
-from app.dtos.response_dto import CallbackReq
+from typing import Any, Optional, List
+from app.dtos.response_dto import CallbackReq, EmbeddingCallbackReq
 from app.errors.exceptions import CallbackException
 
 
@@ -52,6 +52,73 @@ class CallbackService:
 
     async def send_failure(self, callback_url: str, detail_report_id: int, main_report_id: int, error_message: str):
         await self.send_callback(
+            callback_url=callback_url,
+            detail_report_id=detail_report_id,
+            main_report_id=main_report_id,
+            status="FAILED",
+            error_message=error_message
+        )
+
+    async def send_embedding_callback(
+        self,
+        callback_url: str,
+        detail_report_id: int,
+        main_report_id: int,
+        status: str,
+        vector: Optional[List[float]] = None,
+        dimension: Optional[int] = None,
+        error_message: Optional[str] = None
+    ):
+        payload = EmbeddingCallbackReq(
+            detailReportId=detail_report_id,
+            mainReportId=main_report_id,
+            status=status,
+            vector=vector,
+            dimension=dimension,
+            errorMessage=error_message
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    callback_url,
+                    json=payload.model_dump(),
+                    headers={"Content-Type": "application/json"}
+                )
+
+                if response.status_code >= 400:
+                    raise CallbackException(f"임베딩 콜백 전송 실패: HTTP {response.status_code}")
+
+        except httpx.TimeoutException:
+            raise CallbackException("임베딩 콜백 전송 시간 초과")
+        except httpx.RequestError as e:
+            raise CallbackException(f"임베딩 콜백 전송 중 오류: {str(e)}")
+
+    async def send_embedding_success(
+        self,
+        callback_url: str,
+        detail_report_id: int,
+        main_report_id: int,
+        vector: List[float],
+        dimension: int
+    ):
+        await self.send_embedding_callback(
+            callback_url=callback_url,
+            detail_report_id=detail_report_id,
+            main_report_id=main_report_id,
+            status="SUCCESS",
+            vector=vector,
+            dimension=dimension
+        )
+
+    async def send_embedding_failure(
+        self,
+        callback_url: str,
+        detail_report_id: int,
+        main_report_id: int,
+        error_message: str
+    ):
+        await self.send_embedding_callback(
             callback_url=callback_url,
             detail_report_id=detail_report_id,
             main_report_id=main_report_id,
