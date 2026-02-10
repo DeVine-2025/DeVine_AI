@@ -23,7 +23,8 @@ class ReportController:
             detailReportId=request.detailReportId,
             status=result["status"],
             content=result["content"],
-            errorMessage=result["errorMessage"]
+            errorMessage=result["errorMessage"],
+            techstacks=result.get("techstacks", [])
         )
 
 

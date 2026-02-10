@@ -100,16 +100,21 @@ class AnalyzerService:
 
             logger.info(f"{log_prefix} 기여자 분석 중...")
             analysis_result = await self._analyze_contributor(
-                temp_dir, request.gitUrl, author_name, author_email
+                temp_dir, request.gitUrl, author_name, author_email, request.techstacks
             )
             logger.info(f"{log_prefix} AI 분석 완료")
+
+            # techstacks 추출 (AI 응답에서)
+            techstacks = analysis_result.pop("techstacks", []) if isinstance(analysis_result, dict) else []
+            logger.info(f"{log_prefix} AI 응답 techstacks: {techstacks}")
 
             logger.info(f"{log_prefix} 콜백 전송 중...")
             await callback_service.send_success(
                 callback_url=request.callbackUrl,
                 detail_report_id=request.detailReportId,
                 main_report_id=request.mainReportId,
-                content=analysis_result
+                content=analysis_result,
+                techstacks=techstacks
             )
             logger.info(f"{log_prefix} 콜백 전송 완료 (SUCCESS)")
 
@@ -169,7 +174,7 @@ class AnalyzerService:
             )
             logger.info(f"{log_prefix} 임베딩 콜백 전송 완료 (FAILED)")
 
-    def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str) -> str:
+    def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None) -> str:
         tech_stack = detect_tech_stack(dir_path)
         tech_stack_str = json.dumps(tech_stack, ensure_ascii=False, indent=2)
 
@@ -237,14 +242,15 @@ class AnalyzerService:
             file_changes=file_changes,
             other_contributors=other_contributors_str,
             development_period=development_period,
-            test_code_count=test_code_count
+            test_code_count=test_code_count,
+            available_techstacks=available_techstacks
         )
 
         return prompt
 
-    async def _analyze_contributor(self, dir_path: str, repo_url: str, author_name: str, author_email: str) -> dict:
+    async def _analyze_contributor(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None) -> dict:
         prompt = await asyncio.to_thread(
-            self._analyze_contributor_sync, dir_path, repo_url, author_name, author_email
+            self._analyze_contributor_sync, dir_path, repo_url, author_name, author_email, available_techstacks
         )
         result = await gemini_service.analyze_code(prompt)
         return result
@@ -272,7 +278,7 @@ class AnalyzerService:
             analysis_start = time.time()
             logger.info(f"{log_prefix} 기여자 분석 중...")
             analysis_result = await self._analyze_contributor(
-                temp_dir, request.gitUrl, author_name, author_email
+                temp_dir, request.gitUrl, author_name, author_email, request.techstacks
             )
             analysis_elapsed = time.time() - analysis_start
             logger.info(f"{log_prefix} AI 분석 완료 ({analysis_elapsed:.2f}초)")
@@ -285,10 +291,15 @@ class AnalyzerService:
                 self._create_embedding_and_callback(request, analysis_result, log_prefix)
             )
 
+            # techstacks 추출 (AI 응답에서)
+            techstacks = analysis_result.pop("techstacks", []) if isinstance(analysis_result, dict) else []
+            logger.info(f"{log_prefix} AI 응답 techstacks: {techstacks}")
+
             return {
                 "status": "SUCCESS",
                 "content": analysis_result,
-                "errorMessage": None
+                "errorMessage": None,
+                "techstacks": techstacks
             }
 
         except Exception as e:
@@ -297,7 +308,8 @@ class AnalyzerService:
             return {
                 "status": "FAILED",
                 "content": None,
-                "errorMessage": str(e)
+                "errorMessage": str(e),
+                "techstacks": []
             }
 
         finally:

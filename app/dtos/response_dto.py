@@ -15,6 +15,7 @@ class CallbackReq(BaseModel):
     status: str
     content: Optional[Any] = None
     errorMessage: Optional[str] = None
+    techstacks: Optional[List[str]] = None
 
 
 class EmbeddingRes(BaseModel):
@@ -37,3 +38,4 @@ class ReportGenerationSyncRes(BaseModel):
     status: str
     content: Optional[Any] = None
     errorMessage: Optional[str] = None
+    techstacks: Optional[List[str]] = None

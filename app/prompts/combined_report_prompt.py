@@ -13,6 +13,9 @@ Contribution Ratio: {contribution_ratio}%
 === Tech Stack ===
 {tech_stack}
 
+=== Available Techstack Enum Values ===
+{available_techstacks}
+
 === Project Scale ===
 Total Code Files: {total_files}
 Total Lines of Code: {total_lines}
@@ -36,9 +39,10 @@ Files Modified: {files_modified}
 === Other Contributors ===
 {other_contributors}
 
-Based on the information above, analyze the contribution of "{author_name}" and provide BOTH a main report (summary) and a detailed report in the following JSON format.
+Based on the information above, analyze the contribution of "{author_name}" and provide a main report (summary), a detailed report, AND a techstacks array (only the techstacks that "{author_name}" personally used based on their commits and code changes) in the following JSON format.
 
 {{
+    "techstacks": ["techstack enums that {author_name} directly used"],
     "main": {{
         "overview": {{
             "summary": "프로젝트 목적과 해결하는 문제 (2-3문장)",
@@ -174,7 +178,17 @@ Important Requirements:
     - "보안": Only if security features are implemented (JWT, OAuth, encryption, etc.)
   - Consider adding specific categories like "테스트", "배포", "인프라", "상태관리", "스타일링" if applicable to the project.
 - Respond strictly in JSON format only.
+- **techstacks Rules (CRITICAL)**:
+  - The "techstacks" field must be a string array containing ONLY values from the "Available Techstack Enum Values" section above.
+  - Select ONLY the techstacks that "{author_name}" actually used based on their commits, code changes, and modified files — NOT the entire project's tech stack.
+  - Do NOT include techstacks that "{author_name}" did not directly work with, even if the project uses them.
+  - Do NOT include root position values (BACKEND, FRONTEND, INFRA) - only include specific technologies.
+  - Return exact enum names as strings (e.g., "JAVA", "SPRINGBOOT", "REACT", "TYPESCRIPT").
+  - Example: If "{author_name}" worked on Java backend with Spring Boot and MySQL queries, return ["JAVA", "SPRINGBOOT", "MYSQL"].
 """
+
+
+from typing import List, Optional
 
 
 def get_combined_report_prompt(
@@ -194,8 +208,11 @@ def get_combined_report_prompt(
     file_changes: str,
     other_contributors: str,
     development_period: str,
-    test_code_count: int
+    test_code_count: int,
+    available_techstacks: Optional[List[str]] = None
 ) -> str:
+    techstacks_str = ", ".join(available_techstacks) if available_techstacks else "No techstacks provided"
+
     return COMBINED_REPORT_PROMPT.format(
         repo_url=repo_url,
         author_name=author_name,
@@ -213,5 +230,6 @@ def get_combined_report_prompt(
         file_changes=file_changes,
         other_contributors=other_contributors,
         development_period=development_period,
-        test_code_count=test_code_count
+        test_code_count=test_code_count,
+        available_techstacks=techstacks_str
     )
