@@ -126,7 +126,8 @@ Based on the information above, analyze the contribution of "{author_name}" and 
             {{
                 "number": 1,
                 "title": "다음 프로젝트 제안 (예: 비동기 처리)",
-                "description": ["제안 설명"]
+                "description": ["제안 설명"],
+                "recommendKeyword": ["다음 프로젝트에서 사용될 기술의 키워드 (예: CompletableFuture)"]
             }}
         ]
     }}
@@ -165,6 +166,7 @@ Important Requirements:
   - detail.improvements[].suggestions: Provide 2-3 items
   - detail.nextSteps: Provide exactly 3 items
   - detail.nextSteps[].description: Provide 2-3 items
+  - detail.nextSteps[].recommendKeyword: Provide 2-3 items
 - **techStack Rules (IMPORTANT)**:
   - Include as many applicable categories as possible based on the project.
   - ONLY include categories where actual technologies are used in the project. Do NOT include empty or irrelevant categories.
