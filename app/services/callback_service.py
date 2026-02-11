@@ -15,14 +15,16 @@ class CallbackService:
         main_report_id: int,
         status: str,
         content: Optional[Any] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        techstacks: Optional[List[str]] = None
     ):
         payload = CallbackReq(
             detailReportId=detail_report_id,
             mainReportId=main_report_id,
             status=status,
             content=content,
-            errorMessage=error_message
+            errorMessage=error_message,
+            techstacks=techstacks
         )
 
         try:
@@ -41,13 +43,21 @@ class CallbackService:
         except httpx.RequestError as e:
             raise CallbackException(f"콜백 전송 중 오류: {str(e)}")
 
-    async def send_success(self, callback_url: str, detail_report_id: int, main_report_id: int, content: Any):
+    async def send_success(
+        self,
+        callback_url: str,
+        detail_report_id: int,
+        main_report_id: int,
+        content: Any,
+        techstacks: Optional[List[str]] = None
+    ):
         await self.send_callback(
             callback_url=callback_url,
             detail_report_id=detail_report_id,
             main_report_id=main_report_id,
             status="SUCCESS",
-            content=content
+            content=content,
+            techstacks=techstacks
         )
 
     async def send_failure(self, callback_url: str, detail_report_id: int, main_report_id: int, error_message: str):
