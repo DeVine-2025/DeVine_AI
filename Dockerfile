@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 # 앱 복사
 COPY ./app ./app
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/logs && \
+    chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000

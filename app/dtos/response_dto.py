@@ -15,11 +15,21 @@ class CallbackReq(BaseModel):
     status: str
     content: Optional[Any] = None
     errorMessage: Optional[str] = None
+    techstacks: Optional[List[str]] = None
 
 
 class EmbeddingRes(BaseModel):
     vector: List[float]
     dimension: int
+
+
+class EmbeddingCallbackReq(BaseModel):
+    detailReportId: int
+    mainReportId: int
+    status: str
+    vector: Optional[List[float]] = None
+    dimension: Optional[int] = None
+    errorMessage: Optional[str] = None
 
 
 class ReportGenerationSyncRes(BaseModel):
@@ -28,3 +38,4 @@ class ReportGenerationSyncRes(BaseModel):
     status: str
     content: Optional[Any] = None
     errorMessage: Optional[str] = None
+    techstacks: Optional[List[str]] = None

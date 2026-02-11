@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 
@@ -7,7 +7,9 @@ class ReportGenerationReq(BaseModel):
     mainReportId: int
     gitUrl: str
     callbackUrl: str
+    embeddingCallbackUrl: str
     githubToken: str
+    techstacks: Optional[List[str]] = None
 
 
 class EmbeddingReq(BaseModel):
@@ -23,3 +25,5 @@ class ReportGenerationSyncReq(BaseModel):
     detailReportId: int
     gitUrl: str
     githubToken: str
+    embeddingCallbackUrl: str
+    techstacks: Optional[List[str]] = None
