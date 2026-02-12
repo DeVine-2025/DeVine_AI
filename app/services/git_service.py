@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import requests
 import uuid
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from collections import Counter
 from datetime import datetime
 from app.errors.exceptions import GitCloneException, GitAuthException, RepoNotFoundException
@@ -156,6 +156,21 @@ def cleanup_directory(dir_path: str):
         pass
 
 
+def create_mailmap(dir_path: str, canonical_name: str, emails: List[str]):
+    """클론된 레포에 .mailmap 파일 생성. 첫 번째 이메일을 canonical로 사용."""
+    if not emails:
+        return
+    canonical_email = emails[0]
+    lines = []
+    # 같은 이메일로 다른 이름을 사용한 커밋도 canonical_name으로 통합
+    lines.append(f"{canonical_name} <{canonical_email}>")
+    for email in emails[1:]:
+        lines.append(f"{canonical_name} <{canonical_email}> <{email}>")
+    mailmap_path = os.path.join(dir_path, ".mailmap")
+    with open(mailmap_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def get_commit_count(dir_path: str) -> int:
     try:
         result = subprocess.run(
@@ -171,11 +186,19 @@ def get_commit_count(dir_path: str) -> int:
         return 0
 
 
-def get_commit_history(dir_path: str, author_name: str = None, author_email: str = None) -> list:
+def get_commit_history(dir_path: str, author_name: str = None, author_email: str = None, author_emails: List[str] = None) -> list:
     all_commits = {}
 
     search_terms = []
-    if author_email:
+    if author_emails:
+        for email in author_emails:
+            search_terms.append(email)
+            if "noreply.github.com" in email:
+                parts = email.split("+")
+                if len(parts) > 1:
+                    username_part = parts[1].split("@")[0]
+                    search_terms.append(username_part)
+    elif author_email:
         search_terms.append(author_email)
         if "noreply.github.com" in author_email:
             parts = author_email.split("+")
@@ -285,10 +308,11 @@ def analyze_contributor_changes(
     dir_path: str,
     author_name: str,
     author_email: str = None,
+    author_emails: List[str] = None,
     max_added_lines: int = 999,
     max_deleted_lines: int = 999
 ) -> dict:
-    commits = get_commit_history(dir_path, author_name, author_email)
+    commits = get_commit_history(dir_path, author_name, author_email, author_emails)
 
     file_changes = {}
     commit_messages = []
@@ -392,10 +416,10 @@ def get_development_period(dir_path: str) -> str:
         return "알 수 없음"
 
 
-def get_all_contributors_summary(dir_path: str, exclude_author: str = None) -> dict:
+def get_all_contributors_summary(dir_path: str, exclude_author: str = None, exclude_emails: List[str] = None) -> dict:
     try:
         result = subprocess.run(
-            ["git", "shortlog", "-sne", "--no-merges"],
+            ["git", "shortlog", "-sne", "--no-merges", "--use-mailmap"],
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -405,6 +429,8 @@ def get_all_contributors_summary(dir_path: str, exclude_author: str = None) -> d
 
         if result.returncode != 0:
             return {}
+
+        exclude_emails_lower = [e.lower() for e in exclude_emails] if exclude_emails else []
 
         contributors = {}
         for line in result.stdout.strip().split("\n"):
@@ -416,7 +442,12 @@ def get_all_contributors_summary(dir_path: str, exclude_author: str = None) -> d
                 author_info = parts[1]
                 author_name = author_info.split("<")[0].strip()
 
+                email_match = re.search(r'<(.+?)>', author_info)
+                author_email_parsed = email_match.group(1) if email_match else ""
+
                 if exclude_author and author_name.lower() == exclude_author.lower():
+                    continue
+                if exclude_emails_lower and author_email_parsed.lower() in exclude_emails_lower:
                     continue
 
                 contributors[author_name] = {"commits": count}
