@@ -10,6 +10,7 @@ from app.dtos.request_dto import ReportGenerationReq, ReportGenerationSyncReq
 from app.services.git_service import (
     clone_repository,
     cleanup_directory,
+    create_mailmap,
     get_commit_count,
     get_commit_history,
     analyze_contributor_changes,
@@ -79,13 +80,17 @@ def calculate_dynamic_limits(user_commits: int, files_modified: int) -> Analysis
 class AnalyzerService:
     def _clone_and_get_user_info(self, request: ReportGenerationReq) -> tuple:
         author_name, author_email = get_github_user_from_token(request.githubToken)
-        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] 분석 대상: {author_name} ({author_email})")
+        author_emails = request.authorEmails if request.authorEmails else [author_email]
+        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] 분석 대상: {author_name} ({author_email}), 이메일 목록: {author_emails}")
 
         logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] Git 클론 중...")
         temp_dir = clone_repository(request.gitUrl, request.githubToken, settings.temp_dir)
         logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] Git 클론 완료")
 
-        return author_name, author_email, temp_dir
+        create_mailmap(temp_dir, author_name, author_emails)
+        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] .mailmap 생성 완료")
+
+        return author_name, author_email, author_emails, temp_dir
 
     async def analyze_and_callback(self, request: ReportGenerationReq):
         temp_dir = None
@@ -94,13 +99,13 @@ class AnalyzerService:
         logger.info(f"{log_prefix} 분석 시작 - {request.gitUrl}")
 
         try:
-            author_name, author_email, temp_dir = await asyncio.to_thread(
+            author_name, author_email, author_emails, temp_dir = await asyncio.to_thread(
                 self._clone_and_get_user_info, request
             )
 
             logger.info(f"{log_prefix} 기여자 분석 중...")
             analysis_result = await self._analyze_contributor(
-                temp_dir, request.gitUrl, author_name, author_email, request.techstacks
+                temp_dir, request.gitUrl, author_name, author_email, request.techstacks, author_emails
             )
             logger.info(f"{log_prefix} AI 분석 완료")
 
@@ -174,7 +179,7 @@ class AnalyzerService:
             )
             logger.info(f"{log_prefix} 임베딩 콜백 전송 완료 (FAILED)")
 
-    def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None) -> str:
+    def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None, author_emails: list = None) -> str:
         tech_stack = detect_tech_stack(dir_path)
         tech_stack_str = json.dumps(tech_stack, ensure_ascii=False, indent=2)
 
@@ -186,7 +191,7 @@ class AnalyzerService:
 
         total_commits = get_commit_count(dir_path)
 
-        preliminary_commits = get_commit_history(dir_path, author_name, author_email)
+        preliminary_commits = get_commit_history(dir_path, author_name, author_email, author_emails)
         preliminary_files_count = len(set(
             f["path"] for c in preliminary_commits[:50]
             for f in self._get_commit_files_quick(dir_path, c["hash"])
@@ -197,6 +202,7 @@ class AnalyzerService:
 
         contributor_changes = analyze_contributor_changes(
             dir_path, author_name, author_email,
+            author_emails=author_emails,
             max_added_lines=limits.max_added_lines,
             max_deleted_lines=limits.max_deleted_lines
         )
@@ -216,7 +222,7 @@ class AnalyzerService:
             max_commits_per_file=limits.max_commits_per_file
         )
 
-        other_contributors = get_all_contributors_summary(dir_path, exclude_author=author_name)
+        other_contributors = get_all_contributors_summary(dir_path, exclude_author=author_name, exclude_emails=author_emails)
         other_contributors_str = "\n".join([
             f"- {name}: {data['commits']}커밋"
             for name, data in other_contributors.items()
@@ -248,9 +254,9 @@ class AnalyzerService:
 
         return prompt
 
-    async def _analyze_contributor(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None) -> dict:
+    async def _analyze_contributor(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None, author_emails: list = None) -> dict:
         prompt = await asyncio.to_thread(
-            self._analyze_contributor_sync, dir_path, repo_url, author_name, author_email, available_techstacks
+            self._analyze_contributor_sync, dir_path, repo_url, author_name, author_email, available_techstacks, author_emails
         )
         result = await gemini_service.analyze_code(prompt)
         return result
@@ -265,7 +271,8 @@ class AnalyzerService:
 
         try:
             author_name, author_email = get_github_user_from_token(request.githubToken)
-            logger.info(f"{log_prefix} 분석 대상: {author_name} ({author_email})")
+            author_emails = request.authorEmails if request.authorEmails else [author_email]
+            logger.info(f"{log_prefix} 분석 대상: {author_name} ({author_email}), 이메일 목록: {author_emails}")
 
             clone_start = time.time()
             logger.info(f"{log_prefix} Git 클론 중...")
@@ -275,10 +282,13 @@ class AnalyzerService:
             clone_elapsed = time.time() - clone_start
             logger.info(f"{log_prefix} Git 클론 완료 ({clone_elapsed:.2f}초)")
 
+            create_mailmap(temp_dir, author_name, author_emails)
+            logger.info(f"{log_prefix} .mailmap 생성 완료")
+
             analysis_start = time.time()
             logger.info(f"{log_prefix} 기여자 분석 중...")
             analysis_result = await self._analyze_contributor(
-                temp_dir, request.gitUrl, author_name, author_email, request.techstacks
+                temp_dir, request.gitUrl, author_name, author_email, request.techstacks, author_emails
             )
             analysis_elapsed = time.time() - analysis_start
             logger.info(f"{log_prefix} AI 분석 완료 ({analysis_elapsed:.2f}초)")

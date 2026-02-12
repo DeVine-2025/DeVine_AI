@@ -10,6 +10,7 @@ class ReportGenerationReq(BaseModel):
     embeddingCallbackUrl: str
     githubToken: str
     techstacks: Optional[List[str]] = None
+    authorEmails: Optional[List[str]] = None
 
 
 class EmbeddingReq(BaseModel):
@@ -27,3 +28,4 @@ class ReportGenerationSyncReq(BaseModel):
     githubToken: str
     embeddingCallbackUrl: str
     techstacks: Optional[List[str]] = None
+    authorEmails: Optional[List[str]] = None
