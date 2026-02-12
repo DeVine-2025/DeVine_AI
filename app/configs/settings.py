@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimension: int = 1536
 
+    # Internal API Key (Backend callback auth)
+    internal_api_key: str = ""
+
     # Logging
     log_level: str = "INFO"
     log_dir: str = "./logs"
