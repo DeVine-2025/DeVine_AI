@@ -26,12 +26,12 @@ jobs:
         port: ${{ secrets.EC2_SSH_PORT }}
         timeout: 300s
         script: |
-          cd ~/Devine_Deploy/service
-
           # 최신 배포 스크립트 동기화
-          git pull origin main
+          cd ~/Devine_Deploy || exit 1
+          git pull origin main || { echo "ERROR: git pull failed"; exit 1; }
 
           # S3에서 환경변수 다운로드
+          cd ~/Devine_Deploy/service || exit 1
           aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/config/.env .env
           if [ ! -f .env ]; then
             echo "ERROR: .env download failed"
@@ -40,4 +40,4 @@ jobs:
 
           # Blue/Green 배포 실행
           chmod +x deploy.sh
-          ./deploy.sh ai ${{ github.sha }}
+          ./deploy.sh ai sha-${{ github.event.workflow_run.head_sha }}
