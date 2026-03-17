@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import requests
 import uuid
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from collections import Counter
 from datetime import datetime
 from app.errors.exceptions import GitCloneException, GitAuthException, RepoNotFoundException
@@ -91,6 +91,117 @@ def parse_repo_url(repo_url: str) -> dict:
         raise GitCloneException(f"잘못된 GitHub URL 형식: {repo_url}")
 
     return {"owner": match.group(1), "repo": match.group(2)}
+
+
+def _get_github_user_node_id(login: str, github_token: str) -> Optional[str]:
+    """GitHub REST API로 유저의 GraphQL node_id를 조회한다."""
+    try:
+        response = requests.get(
+            f"https://api.github.com/users/{login}",
+            headers={
+                "Authorization": f"Bearer {github_token}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return response.json().get("node_id")
+        return None
+    except Exception:
+        return None
+
+
+def get_user_author_identities_from_github(
+    owner: str, repo: str, login: str, github_token: str
+) -> Optional[Dict[str, Set[str]]]:
+    """GitHub GraphQL API로 특정 유저의 커밋에서 사용된 모든 author 이름/이메일을 조회한다.
+
+    GraphQL의 history(author: { id }) 필터는 GitHub User ID 기반으로 매칭하므로
+    계정에 등록된 모든 이메일 변형을 정확하게 잡아낸다.
+
+    Returns:
+        {"names": {"name1", "name2"}, "emails": {"email1", "email2"}} — 성공
+        None — API 호출 실패 (호출자가 기존 방식으로 fallback)
+    """
+    node_id = _get_github_user_node_id(login, github_token)
+    if not node_id:
+        return None
+
+    names: Set[str] = set()
+    emails: Set[str] = set()
+    cursor = None
+    max_pages = 50
+
+    try:
+        for _ in range(max_pages):
+            after_clause = f', after: "{cursor}"' if cursor else ""
+            query = """
+            query($owner: String!, $repo: String!, $authorId: ID!) {
+              repository(owner: $owner, name: $repo) {
+                defaultBranchRef {
+                  target {
+                    ... on Commit {
+                      history(author: { id: $authorId }, first: 100%s) {
+                        totalCount
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                          author { name email }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """ % after_clause
+
+            response = requests.post(
+                "https://api.github.com/graphql",
+                headers={
+                    "Authorization": f"Bearer {github_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "query": query,
+                    "variables": {
+                        "owner": owner,
+                        "repo": repo,
+                        "authorId": node_id,
+                    },
+                },
+                timeout=15,
+            )
+
+            if response.status_code != 200:
+                return None
+
+            result = response.json()
+            if "errors" in result:
+                return None
+
+            history = (
+                result.get("data", {})
+                .get("repository", {})
+                .get("defaultBranchRef", {})
+                .get("target", {})
+                .get("history", {})
+            )
+
+            for node in history.get("nodes", []):
+                author = node.get("author", {})
+                if author.get("name"):
+                    names.add(author["name"])
+                if author.get("email"):
+                    emails.add(author["email"])
+
+            page_info = history.get("pageInfo", {})
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+
+        return {"names": names, "emails": emails}
+    except Exception:
+        return None
 
 
 def clone_repository(repo_url: str, github_token: str, temp_base_dir: str = "./temp") -> str:
