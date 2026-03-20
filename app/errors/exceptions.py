@@ -49,3 +49,8 @@ class EmptyTextException(AppException):
 class TextTooLongException(AppException):
     def __init__(self, message: str = "입력 텍스트가 너무 깁니다"):
         super().__init__(400, "TEXT_TOO_LONG", message)
+
+
+class AuthorMatchException(AppException):
+    def __init__(self, message: str = "유저 커밋 author 매칭 실패"):
+        super().__init__(502, "AUTHOR_MATCH_FAILED", message)

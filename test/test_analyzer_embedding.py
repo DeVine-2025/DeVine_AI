@@ -7,6 +7,7 @@ Analyzer 서비스 임베딩 통합 테스트
     pytest test/test_analyzer_embedding.py -v -s
 """
 
+import contextlib
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.analyzer_service import analyzer_service
@@ -49,29 +50,35 @@ def mock_request():
 @pytest.fixture
 def mock_services():
     """모든 외부 서비스 Mock"""
-    # analyzer_service에서 직접 import한 함수들은 analyzer_service 모듈 내부를 Mock해야 함
-    with patch("app.services.analyzer_service.get_github_user_from_token") as mock_gh, \
-         patch("app.services.analyzer_service.clone_repository") as mock_clone, \
-         patch("app.services.analyzer_service.cleanup_directory") as mock_cleanup, \
-         patch("app.services.analyzer_service.build_project_tree") as mock_tree, \
-         patch("app.services.analyzer_service.detect_tech_stack") as mock_tech, \
-         patch("app.services.analyzer_service.get_code_files") as mock_files, \
-         patch("app.services.analyzer_service.count_lines") as mock_lines, \
-         patch("app.services.analyzer_service.count_test_files") as mock_test_files, \
-         patch("app.services.analyzer_service.get_commit_count") as mock_commit_count, \
-         patch("app.services.analyzer_service.get_commit_history") as mock_commit_history, \
-         patch("app.services.analyzer_service.analyze_contributor_changes") as mock_contributor, \
-         patch("app.services.analyzer_service.get_all_contributors_summary") as mock_all_contributors, \
-         patch("app.services.analyzer_service.get_development_period") as mock_dev_period, \
-         patch("app.services.analyzer_service.gemini_service.analyze_code", new_callable=AsyncMock) as mock_gemini, \
-         patch("app.services.analyzer_service.callback_service.send_success", new_callable=AsyncMock) as mock_callback_success, \
-         patch("app.services.analyzer_service.callback_service.send_failure", new_callable=AsyncMock) as mock_callback_failure, \
-         patch("app.services.analyzer_service.embedding_service.create_embedding", new_callable=AsyncMock) as mock_embedding, \
-         patch("app.services.analyzer_service.callback_service.send_embedding_success", new_callable=AsyncMock) as mock_embedding_callback:
+    prefix = "app.services.analyzer_service"
+    with contextlib.ExitStack() as stack:
+        mock_gh = stack.enter_context(patch(f"{prefix}.get_github_user_from_token"))
+        mock_clone = stack.enter_context(patch(f"{prefix}.clone_repository"))
+        mock_cleanup = stack.enter_context(patch(f"{prefix}.cleanup_directory"))
+        mock_mailmap = stack.enter_context(patch(f"{prefix}.create_mailmap"))
+        mock_tree = stack.enter_context(patch(f"{prefix}.build_project_tree"))
+        mock_tech = stack.enter_context(patch(f"{prefix}.detect_tech_stack"))
+        mock_files = stack.enter_context(patch(f"{prefix}.get_code_files"))
+        mock_lines = stack.enter_context(patch(f"{prefix}.count_lines"))
+        mock_test_files = stack.enter_context(patch(f"{prefix}.count_test_files"))
+        mock_commit_count = stack.enter_context(patch(f"{prefix}.get_commit_count"))
+        mock_commit_history = stack.enter_context(patch(f"{prefix}.get_commit_history"))
+        mock_contributor = stack.enter_context(patch(f"{prefix}.analyze_contributor_changes"))
+        mock_all_contributors = stack.enter_context(patch(f"{prefix}.get_all_contributors_summary"))
+        mock_dev_period = stack.enter_context(patch(f"{prefix}.get_development_period"))
+        mock_identities = stack.enter_context(patch(f"{prefix}.get_user_author_identities_from_github"))
+        mock_parse_url = stack.enter_context(patch(f"{prefix}.parse_repo_url"))
+        mock_gemini = stack.enter_context(patch(f"{prefix}.gemini_service.analyze_code", new_callable=AsyncMock))
+        mock_callback_success = stack.enter_context(patch(f"{prefix}.callback_service.send_success", new_callable=AsyncMock))
+        mock_callback_failure = stack.enter_context(patch(f"{prefix}.callback_service.send_failure", new_callable=AsyncMock))
+        mock_embedding = stack.enter_context(patch(f"{prefix}.embedding_service.create_embedding", new_callable=AsyncMock))
+        mock_embedding_callback = stack.enter_context(patch(f"{prefix}.callback_service.send_embedding_success", new_callable=AsyncMock))
 
         # Mock 설정
         mock_gh.return_value = ("test_user", "test@example.com")
         mock_clone.return_value = "/tmp/test_repo"
+        mock_parse_url.return_value = {"owner": "test", "repo": "repo"}
+        mock_identities.return_value = {"names": {"test_user"}, "emails": {"test@example.com"}}
         mock_tree.return_value = "test_tree_structure"
         mock_tech.return_value = {"JavaScript": ["React", "Node.js"]}
         mock_files.return_value = ["file1.js", "file2.js"]
@@ -123,7 +130,8 @@ class TestAnalyzerEmbedding:
             callback_url=mock_request.callbackUrl,
             detail_report_id=mock_request.detailReportId,
             main_report_id=mock_request.mainReportId,
-            content=MOCK_ANALYSIS_RESULT
+            content=MOCK_ANALYSIS_RESULT,
+            techstacks=[]
         )
 
         # 검증 4: 임베딩 생성
