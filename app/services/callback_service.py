@@ -1,5 +1,6 @@
 import httpx
 from typing import Any, Optional, List
+from app.configs.settings import settings
 from app.dtos.response_dto import CallbackReq, EmbeddingCallbackReq
 from app.errors.exceptions import CallbackException
 
@@ -7,6 +8,10 @@ from app.errors.exceptions import CallbackException
 class CallbackService:
     def __init__(self):
         self.timeout = 30.0
+        self._headers = {
+            "Content-Type": "application/json",
+            "Authorization": settings.internal_api_key,
+        }
 
     async def send_callback(
         self,
@@ -32,7 +37,7 @@ class CallbackService:
                 response = await client.post(
                     callback_url,
                     json=payload.model_dump(),
-                    headers={"Content-Type": "application/json"}
+                    headers=self._headers
                 )
 
                 if response.status_code >= 400:
@@ -93,7 +98,7 @@ class CallbackService:
                 response = await client.post(
                     callback_url,
                     json=payload.model_dump(),
-                    headers={"Content-Type": "application/json"}
+                    headers=self._headers
                 )
 
                 if response.status_code >= 400:

@@ -16,7 +16,9 @@ from app.services.git_service import (
     analyze_contributor_changes,
     get_all_contributors_summary,
     get_github_user_from_token,
-    get_development_period
+    get_development_period,
+    get_user_author_identities_from_github,
+    parse_repo_url
 )
 from app.configs.settings import settings
 from app.services.gemini_service import gemini_service
@@ -27,6 +29,7 @@ from app.utils.tech_detector import detect_tech_stack
 from app.utils.tree_builder import build_project_tree
 from app.utils.text_processor import extract_embedding_text
 from app.prompts.combined_report_prompt import get_combined_report_prompt
+from app.errors.exceptions import AuthorMatchException
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +84,31 @@ class AnalyzerService:
     def _clone_and_get_user_info(self, request: ReportGenerationReq) -> tuple:
         author_name, author_email = get_github_user_from_token(request.githubToken)
         author_emails = request.authorEmails if request.authorEmails else [author_email]
-        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] 분석 대상: {author_name} ({author_email}), 이메일 목록: {author_emails}")
+        log_prefix = f"[detail:{request.detailReportId}, main:{request.mainReportId}]"
+        logger.info(f"{log_prefix} 분석 대상: {author_name} ({author_email}), 이메일 목록: {author_emails}")
 
-        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] Git 클론 중...")
+        # GitHub GraphQL API로 유저의 모든 author 이름/이메일 조회
+        try:
+            repo_info = parse_repo_url(request.gitUrl)
+            identities = get_user_author_identities_from_github(
+                repo_info["owner"], repo_info["repo"], author_name, request.githubToken
+            )
+            if identities is None:
+                raise AuthorMatchException("GitHub GraphQL API로 유저의 커밋 author 정보를 조회할 수 없습니다")
+            # 기존 이메일 목록에 GitHub에서 발견된 이메일 추가
+            for email in identities["emails"]:
+                if email not in author_emails:
+                    author_emails.append(email)
+            logger.info(f"{log_prefix} GitHub GraphQL로 이름 {len(identities['names'])}개, 이메일 {len(identities['emails'])}개 발견")
+        except Exception as e:
+            raise AuthorMatchException(f"유저 커밋 author 매칭 실패: {e}") from e
+
+        logger.info(f"{log_prefix} Git 클론 중...")
         temp_dir = clone_repository(request.gitUrl, request.githubToken, settings.temp_dir)
-        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] Git 클론 완료")
+        logger.info(f"{log_prefix} Git 클론 완료")
 
         create_mailmap(temp_dir, author_name, author_emails)
-        logger.info(f"[detail:{request.detailReportId}, main:{request.mainReportId}] .mailmap 생성 완료")
+        logger.info(f"{log_prefix} .mailmap 생성 완료")
 
         return author_name, author_email, author_emails, temp_dir
 
@@ -273,6 +293,21 @@ class AnalyzerService:
             author_name, author_email = get_github_user_from_token(request.githubToken)
             author_emails = request.authorEmails if request.authorEmails else [author_email]
             logger.info(f"{log_prefix} 분석 대상: {author_name} ({author_email}), 이메일 목록: {author_emails}")
+
+            # GitHub GraphQL API로 유저의 모든 author 이름/이메일 조회
+            try:
+                repo_info = parse_repo_url(request.gitUrl)
+                identities = get_user_author_identities_from_github(
+                    repo_info["owner"], repo_info["repo"], author_name, request.githubToken
+                )
+                if identities is None:
+                    raise AuthorMatchException("GitHub GraphQL API로 유저의 커밋 author 정보를 조회할 수 없습니다")
+                for email in identities["emails"]:
+                    if email not in author_emails:
+                        author_emails.append(email)
+                logger.info(f"{log_prefix} GitHub GraphQL로 이름 {len(identities['names'])}개, 이메일 {len(identities['emails'])}개 발견")
+            except Exception as e:
+                raise AuthorMatchException(f"유저 커밋 author 매칭 실패: {e}") from e
 
             clone_start = time.time()
             logger.info(f"{log_prefix} Git 클론 중...")
