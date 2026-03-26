@@ -10,7 +10,7 @@ class CallbackService:
         self.timeout = 30.0
         self._headers = {
             "Content-Type": "application/json",
-            "Authorization": settings.internal_api_key,
+            "Authorization": "Bearer " + settings.internal_api_key,
         }
 
     async def send_callback(
