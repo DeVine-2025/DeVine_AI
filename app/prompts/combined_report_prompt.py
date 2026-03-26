@@ -179,6 +179,9 @@ Important Requirements:
     - "도구": Only if specific build tools, package managers, or dev tools are used
     - "보안": Only if security features are implemented (JWT, OAuth, encryption, etc.)
   - Consider adding specific categories like "테스트", "배포", "인프라", "상태관리", "스타일링" if applicable to the project.
+- **Tech Stack Version Rules**:
+  - Extract version information (e.g., Java 17, Spring Boot 3.2, Node 18, Python 3.11) from the ENTIRE project's build/config files (pom.xml, build.gradle, package.json, requirements.txt, pyproject.toml, .nvmrc, etc.), NOT just {author_name}'s commits.
+  - Always include the specific version number when available (e.g., "Java 17" not just "Java").
 - Respond strictly in JSON format only.
 - **techstacks Rules (CRITICAL)**:
   - The "techstacks" field must be a string array containing ONLY values from the "Available Techstack Enum Values" section above.
