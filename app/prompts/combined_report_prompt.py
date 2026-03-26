@@ -51,8 +51,8 @@ Based on the information above, analyze the contribution of "{author_name}" and 
             "scale": "코드 라인, 파일 수, 기간 요약 (예: 약 15,000줄 코드 작성, 85개 파일, 6개월 개발)"
         }},
         "projectInfo": {{
-            "projectName": "레포지토리 기반 프로젝트명",
-            "techStack": ["상세 기술 스택 리스트 (예: Java 17, Spring Boot 3.2, PostgreSQL)"],
+            "projectName": "{repo_url}에서 추출한 프로젝트명",
+            "techStack": ["전체 상세 기술 스택 리스트 (예: Java 17, Spring Boot 3.2, PostgreSQL)"],
             "scale": "{total_lines}줄 | {total_files}개 파일 | {development_period} 개발 기간"
         }},
         "keyImplementations": [
@@ -71,7 +71,7 @@ Based on the information above, analyze the contribution of "{author_name}" and 
         "recommendations": ["추천 서비스 도메인 또는 직무 3개 (예: 금융/결제 서비스 백엔드 개발)"]
     }},
     "detail": {{
-        "reportTitle": "프로젝트명 (영문 또는 한글)",
+        "reportTitle": "{repo_url}에서 추출한 프로젝트명",
         "reportSubtitle": "프로젝트 상세 분석 리포트",
         "projectOverview": {{
             "purpose": "프로젝트 목적 상세 설명 (2-3문장, 무엇을 해결하는지)",
@@ -179,6 +179,9 @@ Important Requirements:
     - "도구": Only if specific build tools, package managers, or dev tools are used
     - "보안": Only if security features are implemented (JWT, OAuth, encryption, etc.)
   - Consider adding specific categories like "테스트", "배포", "인프라", "상태관리", "스타일링" if applicable to the project.
+- **Tech Stack Version Rules**:
+  - Extract version information (e.g., Java 17, Spring Boot 3.2, Node 18, Python 3.11) from the ENTIRE project's build/config files (pom.xml, build.gradle, package.json, requirements.txt, pyproject.toml, .nvmrc, etc.), NOT just {author_name}'s commits.
+  - Always include the specific version number when available (e.g., "Java 17" not just "Java").
 - Respond strictly in JSON format only.
 - **techstacks Rules (CRITICAL)**:
   - The "techstacks" field must be a string array containing ONLY values from the "Available Techstack Enum Values" section above.
@@ -211,9 +214,13 @@ def get_combined_report_prompt(
     other_contributors: str,
     development_period: str,
     test_code_count: int,
-    available_techstacks: Optional[List[str]] = None
+    available_techstacks: Optional[List[str]] = None,
 ) -> str:
-    techstacks_str = ", ".join(available_techstacks) if available_techstacks else "No techstacks provided"
+    techstacks_str = (
+        ", ".join(available_techstacks)
+        if available_techstacks
+        else "No techstacks provided"
+    )
 
     return COMBINED_REPORT_PROMPT.format(
         repo_url=repo_url,
@@ -233,5 +240,5 @@ def get_combined_report_prompt(
         other_contributors=other_contributors,
         development_period=development_period,
         test_code_count=test_code_count,
-        available_techstacks=techstacks_str
+        available_techstacks=techstacks_str,
     )

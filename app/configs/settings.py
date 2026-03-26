@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimension: int = 1536
 
+    # Discord Webhook
+    discord_webhook_url: str = ""
+
     # Internal API Key (Backend callback auth)
     internal_api_key: str = ""
 
