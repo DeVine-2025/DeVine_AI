@@ -1,21 +1,23 @@
 import os
+import subprocess
 from typing import List, Dict
 
-CODE_EXTENSIONS = [
-    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".kt", ".swift",
-    ".go", ".rs", ".rb", ".php", ".cs", ".cpp", ".c", ".h",
-    ".vue", ".svelte", ".html", ".css", ".scss", ".sass", ".less"
-]
+from binaryornot.check import is_binary
 
 SKIP_DIRS = [
     "node_modules", "vendor", "dist", "build", ".git", "__pycache__",
     ".next", "coverage", ".venv", "venv", "env", ".idea", ".vscode"
 ]
 
-SKIP_FILES = [
+# 자동생성 락파일 (내용이 의미 없는 파일)
+SKIP_FILES = {
+    # 패키지 락파일
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    ".DS_Store", "Thumbs.db"
-]
+    "Pipfile.lock", "poetry.lock", "composer.lock",
+    "Gemfile.lock", "Cargo.lock", "mix.lock",
+    # OS 메타데이터
+    ".DS_Store", "Thumbs.db", "desktop.ini",
+}
 
 
 def get_all_files(dir_path: str) -> List[str]:
@@ -34,14 +36,49 @@ def get_all_files(dir_path: str) -> List[str]:
     return files
 
 
+def get_git_tracked_files(dir_path: str) -> List[str]:
+    """git ls-files로 추적 중인 파일만 반환. git 환경이 아니면 get_all_files로 fallback."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=dir_path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return [f for f in result.stdout.strip().split("\n") if f]
+    except Exception:
+        pass
+    return get_all_files(dir_path)
+
+
 def get_code_files(dir_path: str) -> List[str]:
-    all_files = get_all_files(dir_path)
+    """git 추적 파일 기준으로 바이너리/자동생성 파일을 제외한 작업 파일 목록 반환."""
+    all_files = get_git_tracked_files(dir_path)
 
     code_files = []
     for file in all_files:
-        ext = os.path.splitext(file)[1].lower()
-        if ext in CODE_EXTENSIONS:
-            code_files.append(file)
+        filename = os.path.basename(file)
+
+        # 락파일/OS 메타 스킵
+        if filename in SKIP_FILES:
+            continue
+
+        # 미니파이된 파일 스킵 (예: bundle.min.js, app.min.css)
+        if ".min." in filename:
+            continue
+
+        # 실제 파일 내용 기반 바이너리 판별
+        abs_path = os.path.join(dir_path, file)
+        try:
+            if is_binary(abs_path):
+                continue
+        except Exception:
+            continue
+
+        code_files.append(file)
 
     return code_files
 
