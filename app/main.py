@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("🛑 서버 종료 중...")
 
-app = FastAPI(title="DeVine AI Server", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="DeVine AI Server", version="1.0.10", lifespan=lifespan)
 
 add_exception_handlers(app)
 
