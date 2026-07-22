@@ -1,14 +1,13 @@
-COMBINED_REPORT_PROMPT = """
-You are an expert at analyzing software project contributions and writing comprehensive reports.
-IMPORTANT: You must write all the values within the JSON response in KOREAN (한국어).
+from typing import List, Optional
 
+COMBINED_REPORT_PROMPT = """\
 The following is the contribution analysis for "{author_name}" in the repository "{repo_url}".
 
 === Project Information ===
 Repository: {repo_url}
 Total Commits: {total_commits}
 Commits by {author_name}: {user_commits}
-Contribution Ratio: {contribution_ratio}%
+Contribution Ratio: {contribution_ratio:.1f}%
 
 === Tech Stack ===
 {tech_stack}
@@ -145,28 +144,23 @@ Important Requirements:
   - Only list features that EXIST in the codebase but were implemented by other people
 - Group implemented features by category (e.g., Security, File Processing, API Integration, etc.).
 - Write code locations based on the actual project structure provided.
-- **Array Length Guidelines**:
-  - main.overview.capabilities: Provide exactly 5 items
-  - main.projectInfo.techStack: Provide 5-10 items
-  - main.keyImplementations: Provide exactly 4 items
-  - main.keyImplementations[].capabilities: Provide exactly 4 items
-  - main.aiEvaluation: Provide exactly 3 items
-  - main.aiEvaluation[].details: Provide exactly 3 items
-  - main.recommendations: Provide exactly 3 items
-  - detail.implementedFeatures: Provide up to 5 categories
-  - detail.implementedFeatures[].features: Provide 2-4 items per category
-  - detail.implementedFeatures[].features[].implementation: Provide 2-3 items
-  - detail.implementedFeatures[].features[].details: Provide 2-3 items
-  - detail.projectSummary.implemented: Provide 3-5 items
-  - detail.projectSummary.notImplemented: Provide 1-3 items
-  - detail.codeInsights: Provide exactly 4 items
-  - detail.codeInsights[].points: Provide 2-3 items
-  - detail.improvements: Provide exactly 3 items
-  - detail.improvements[].currentState: Provide 1-2 items
-  - detail.improvements[].suggestions: Provide 2-3 items
-  - detail.nextSteps: Provide exactly 3 items
-  - detail.nextSteps[].description: Provide 2-3 items
-  - detail.nextSteps[].recommendKeyword: Provide 2-3 items
+- **codeLocation is REQUIRED** (must have at least 1 item, never empty):
+  - detail.implementedFeatures[].features[].codeLocation: always provide actual file paths from the project structure
+  - detail.codeInsights[].codeLocation: always provide actual file paths relevant to the insight
+- Array length requirements:
+  - main.overview.capabilities: exactly 5 items
+  - main.projectInfo.techStack: 5-10 items
+  - main.keyImplementations: exactly 4 items, each with exactly 4 capabilities
+  - main.aiEvaluation: exactly 3 items, each with exactly 3 details
+  - main.recommendations: exactly 3 items
+  - detail.implementedFeatures: up to 5 categories, each with 2-4 features
+  - detail.implementedFeatures[].features[].implementation: 2-3 items
+  - detail.implementedFeatures[].features[].details: 2-3 items
+  - detail.projectSummary.implemented: 3-5 items
+  - detail.projectSummary.notImplemented: 1-3 items
+  - detail.codeInsights: exactly 4 items, each with 2-3 points
+  - detail.improvements: exactly 3 items, each with 1-2 currentState and 2-3 suggestions
+  - detail.nextSteps: exactly 3 items, each with 2-3 description and 2-3 recommendKeyword
 - **techStack Rules (IMPORTANT)**:
   - Include as many applicable categories as possible based on the project.
   - ONLY include categories where actual technologies are used in the project. Do NOT include empty or irrelevant categories.
@@ -182,7 +176,6 @@ Important Requirements:
 - **Tech Stack Version Rules**:
   - Extract version information (e.g., Java 17, Spring Boot 3.2, Node 18, Python 3.11) from the ENTIRE project's build/config files (pom.xml, build.gradle, package.json, requirements.txt, pyproject.toml, .nvmrc, etc.), NOT just {author_name}'s commits.
   - Always include the specific version number when available (e.g., "Java 17" not just "Java").
-- Respond strictly in JSON format only.
 - **techstacks Rules (CRITICAL)**:
   - The "techstacks" field must be a string array containing ONLY values from the "Available Techstack Enum Values" section above.
   - Select ONLY the techstacks that "{author_name}" actually used based on their commits, code changes, and modified files — NOT the entire project's tech stack.
@@ -191,9 +184,6 @@ Important Requirements:
   - Return exact enum names as strings (e.g., "JAVA", "SPRINGBOOT", "REACT", "TYPESCRIPT").
   - Example: If "{author_name}" worked on Java backend with Spring Boot and MySQL queries, return ["JAVA", "SPRINGBOOT", "MYSQL"].
 """
-
-
-from typing import List, Optional
 
 
 def get_combined_report_prompt(

@@ -1,8 +1,14 @@
-name: CI
+name: DeVine AI CI
 
 on:
   push:
     branches: [ main, qa ]
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - '.github/workflows/CI.yml'
+      - '.github/workflows/CD.yml'
 
 env:
   PYTHON_VERSION: '3.12'
