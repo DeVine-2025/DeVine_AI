@@ -64,15 +64,21 @@ jobs:
         script: |
           cd ~/Devine_Deploy/service
 
+          # 동시 배포 시 .env / docker-compose.yml 을 서로 덮어쓰지 않도록
+          # 배포 전 구간을 하나의 락으로 직렬화한다.
+          (
+          flock -w 300 9 || { echo "ERROR: failed to acquire deploy lock"; exit 1; }
+
           # 최신 배포 스크립트 가져오기
           git pull origin main
 
-          # S3에서 .env 파일 다운로드
-          aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/config/.env .env
+          # S3에서 환경변수 다운로드 (운영환경)
+          aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/config/.env.prod .env
           if [ ! -f .env ] || [ ! -s .env ]; then
-            echo "ERROR: .env file missing or empty after S3 download"
+            echo "ERROR: .env.prod file missing or empty after S3 download"
             exit 1
           fi
+          chmod 600 .env
 
           IMAGE="${{ secrets.DOCKER_USERNAME }}/devine-ai"
 
@@ -129,6 +135,7 @@ jobs:
 
           # 6. 사용하지 않는 이미지 정리
           docker image prune -f
+          ) 9>/tmp/devine-deploy.lock
 
   # 개발환경 배포 (OCI, ARM)
   deploy-qa:
@@ -147,6 +154,11 @@ jobs:
         script: |
           cd ~/Devine_Deploy/service
 
+          # 동시 배포 시 .env / docker-compose.yml 을 서로 덮어쓰지 않도록
+          # 배포 전 구간을 하나의 락으로 직렬화한다.
+          (
+          flock -w 300 9 || { echo "ERROR: failed to acquire deploy lock"; exit 1; }
+
           # 최신 배포 스크립트 가져오기
           git pull origin main
 
@@ -156,6 +168,7 @@ jobs:
             echo "ERROR: .env.qa file missing or empty after S3 download"
             exit 1
           fi
+          chmod 600 .env
 
           IMAGE="${{ secrets.DOCKER_USERNAME }}/devine-ai"
 
@@ -212,3 +225,4 @@ jobs:
 
           # 6. 사용하지 않는 이미지 정리
           docker image prune -f
+          ) 9>/tmp/devine-deploy.lock
