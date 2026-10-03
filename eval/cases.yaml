@@ -1,0 +1,48 @@
+# ADK PoC 평가 케이스: 레포@SHA + 작성자 신원
+# - emails는 운영의 GitHub GraphQL 신원 조회 결과를 대신한다. 첫 이메일이 .mailmap의 canonical이 된다.
+# - techstacks는 백엔드 TechName enum 전체(FastApiReportClient가 보내는 값과 같음)를 쓴다.
+
+techstacks: [BACKEND, FRONTEND, INFRA, JAVASCRIPT, TYPESCRIPT, REACT, VUEJS, NEXTJS, SVELTE,
+             REACT_NATIVE, FLUTTER, KOTLIN, SWIFT, JAVA, PYTHON, GO, C, PHP, SPRINGBOOT, NODEJS,
+             EXPRESS, NESTJS, DJANGO, MONGODB, MYSQL, AWS, FIREBASE, DOCKER, KUBERNETES]
+
+cases:
+  # 회의 자료 기준 레포 (v2 검수 대상). 작성자는 v2와 같은지 확인 필요(미결 Q1)
+  - id: haru-web
+    repo_url: https://github.com/HaRu-Developers/haru-web
+    sha: "55189c0"
+    author: {name: JOY, emails: ["92291790+duwlsssss@users.noreply.github.com"]}
+    tags: [frontend, nextjs, medium]
+
+  - id: devine-backend
+    repo_url: https://github.com/DeVine-2025/DeVine_BackEnd
+    sha: "e26ef46"
+    author: {name: HEO YUJIN, emails: ["81500596+yujin9907@users.noreply.github.com", "qetyop9762@gmail.com", "qetyop2679@gmail.com"]}
+    tags: [backend, java, spring, medium]
+
+  - id: devine-ai
+    repo_url: https://github.com/DeVine-2025/DeVine_AI
+    sha: "60088a8"
+    author: {name: HEO YUJIN, emails: ["81500596+yujin9907@users.noreply.github.com", "qetyop9762@gmail.com", "qetyop2679@gmail.com"]}
+    tags: [backend, python, small]
+
+  # Deokive(3176df6)를 찾지 못해 대체한 대형 프론트 레포
+  - id: devine-frontend
+    repo_url: https://github.com/DeVine-2025/DeVine_FrontEnd
+    sha: "6867308"
+    author: {name: 달수, emails: ["emily4542@naver.com"]}
+    tags: [frontend, react, large]
+
+  # 커밋 3개 시점의 소형 레포, 작성자 커밋 1개
+  - id: devine-ai-early
+    repo_url: https://github.com/DeVine-2025/DeVine_AI
+    sha: "c1e5d56"
+    author: {name: strfunctionk, emails: ["84651690+strfunctionk@users.noreply.github.com", "comzun01@gmail.com"]}
+    tags: [backend, python, tiny, low-evidence]
+
+  # 음성 케이스: 작성자 커밋 0개
+  - id: negative-no-commits
+    repo_url: https://github.com/DeVine-2025/DeVine_BackEnd
+    sha: "e26ef46"
+    author: {name: ghost-nobody, emails: ["ghost-nobody@example.invalid"]}
+    tags: [negative]
