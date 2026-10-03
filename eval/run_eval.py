@@ -176,8 +176,13 @@ async def main_async(args):
     base = os.path.join(RUNS, date)
     recorder = UsageRecorder() if args.engine == "legacy_a" else None
     sem = asyncio.Semaphore(args.concurrency)
+    thinking = "default"
+    if args.engine not in ("legacy_a", "legacy"):
+        import importlib
+
+        thinking = getattr(importlib.import_module(f"app.report.engines.{args.engine}"), "THINKING_BUDGET", "default")
     meta = {"engine": args.engine, "model": "gemini-2.5-flash (fallback: 2.5-pro, 2.0-flash)", "temperature": "default",
-            "thinking": "default", **code_version()}
+            "thinking": thinking, **code_version()}
 
     tasks = []
     for case in cases:
