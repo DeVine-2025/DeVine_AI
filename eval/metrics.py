@@ -27,7 +27,8 @@ PRICING = {
 KRW_PER_USD = 1340
 ROOT_TECHS = {"BACKEND", "FRONTEND", "INFRA"}
 SIMILARITY_MATCH = 0.5
-GENERIC_COSINE = 0.9
+# text-embedding-3-small 기준 보정값(2026-10-03, A 18회): 일반론 쌍 0.73~0.80, 중앙값 0.60
+GENERIC_COSINE = 0.72
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_.\-/]{2,}")
 
 # 프롬프트가 요구한 배열 개수 (min, max)
@@ -227,7 +228,9 @@ def _cos(a, b):
     return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
 
 
-def generic_ratio(runs: list[dict], base: str) -> tuple[float | None, list[tuple[str, int]]]:
+def generic_ratio(runs: list[dict], base: str, facts: dict) -> tuple[float | None, list[tuple[str, int]]]:
+    """다른 레포 리포트에 거의 같은 항목이 있으면 일반론으로 센다. 같은 레포의 다른 시점 케이스끼리는 비교하지 않는다."""
+    repo_of = {cid: f.get("repo_url") for cid, f in facts.items()}
     items = []  # (case, text, title)
     for r in runs:
         if not r.get("success"):
@@ -242,7 +245,7 @@ def generic_ratio(runs: list[dict], base: str) -> tuple[float | None, list[tuple
     emb = _embed([t for _, t, _ in items], os.path.join(base, "_embeddings.json"))
     generic = 0
     for case, text, _ in items:
-        others = [t for c, t, _ in items if c != case]
+        others = [t for c, t, _ in items if repo_of.get(c) != repo_of.get(case)]
         if others and max(_cos(emb[text], emb[o]) for o in others) >= GENERIC_COSINE:
             generic += 1
     common = Counter(_norm_text(t) for _, _, t in items).most_common(5)
@@ -319,7 +322,7 @@ def engine_summary(base: str, engine: str, facts: dict, embed: bool = False) -> 
     s["time_p50"], s["time_p95"] = pct(times, 0.5), pct(times, 0.95)
     s["concrete_ratio"] = _mean([concrete_ratio(r["content"], facts[r["case"]]) for r in ok])
     if embed:
-        s["generic_ratio"], s["generic_common"] = generic_ratio(ok, base)
+        s["generic_ratio"], s["generic_common"] = generic_ratio(ok, base, facts)
 
     per_case = {}
     for case in sorted({r["case"] for r in runs}):
