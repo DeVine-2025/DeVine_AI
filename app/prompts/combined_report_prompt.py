@@ -12,6 +12,9 @@ Contribution Ratio: {contribution_ratio:.1f}%
 === Tech Stack ===
 {tech_stack}
 
+=== Dependency Versions (from HEAD build files) ===
+{build_versions}
+
 === Available Techstack Enum Values ===
 {available_techstacks}
 
@@ -28,6 +31,7 @@ Test Code Files: {test_code_count}
 Total Lines Added: {lines_added}
 Total Lines Deleted: {lines_deleted}
 Files Modified: {files_modified}
+Activity Period of {author_name}: {author_period}
 
 === Commit Messages by {author_name} ===
 {commit_messages}
@@ -47,7 +51,7 @@ Based on the information above, analyze the contribution of "{author_name}" and 
             "summary": "프로젝트 목적과 해결하는 문제 (2-3문장)",
             "mainTech": "핵심 프레임워크/언어 요약 (예: Java 백엔드 서버 개발 (Spring Boot))",
             "capabilities": ["이 프로젝트를 통해 증명된 5개 핵심 역량"],
-            "scale": "코드 라인, 파일 수, 기간 요약 (예: 약 15,000줄 코드 작성, 85개 파일, 6개월 개발)"
+            "scale": "{author_name}의 작업 규모 요약 (서버가 실제 수치로 덮어씀)"
         }},
         "projectInfo": {{
             "projectName": "{repo_url}에서 추출한 프로젝트명",
@@ -93,7 +97,7 @@ Based on the information above, analyze the contribution of "{author_name}" and 
                         "name": "세부 기능명 (예: JWT 토큰 인증 시스템)",
                         "implementation": ["구현 내용 (큰 틀)"],
                         "codeLocation": [
-                            "src/main/java/security/JwtTokenProvider.java"
+                            "Project Structure에 실제로 있는 파일 경로"
                         ],
                         "details": ["세부 구현 내용"]
                     }}
@@ -174,8 +178,8 @@ Important Requirements:
     - "보안": Only if security features are implemented (JWT, OAuth, encryption, etc.)
   - Consider adding specific categories like "테스트", "배포", "인프라", "상태관리", "스타일링" if applicable to the project.
 - **Tech Stack Version Rules**:
-  - Extract version information (e.g., Java 17, Spring Boot 3.2, Node 18, Python 3.11) from the ENTIRE project's build/config files (pom.xml, build.gradle, package.json, requirements.txt, pyproject.toml, .nvmrc, etc.), NOT just {author_name}'s commits.
-  - Always include the specific version number when available (e.g., "Java 17" not just "Java").
+  - Use version numbers ONLY from the "Dependency Versions" section above. Do NOT guess versions.
+  - If a technology is not in that section, write its name without a version.
 - **techstacks Rules (CRITICAL)**:
   - The "techstacks" field must be a string array containing ONLY values from the "Available Techstack Enum Values" section above.
   - Select ONLY the techstacks that "{author_name}" actually used based on their commits, code changes, and modified files — NOT the entire project's tech stack.
@@ -205,6 +209,8 @@ def get_combined_report_prompt(
     development_period: str,
     test_code_count: int,
     available_techstacks: Optional[List[str]] = None,
+    build_versions: str = "(not provided)",
+    author_period: str = "unknown",
 ) -> str:
     techstacks_str = (
         ", ".join(available_techstacks)
@@ -231,4 +237,6 @@ def get_combined_report_prompt(
         development_period=development_period,
         test_code_count=test_code_count,
         available_techstacks=techstacks_str,
+        build_versions=build_versions,
+        author_period=author_period,
     )
