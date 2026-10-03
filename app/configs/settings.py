@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Internal API Key (Backend callback auth)
     internal_api_key: str = ""
 
+    # Report generation engine (legacy | v1_adk ...)
+    report_engine: str = "legacy"
+
     # Logging
     log_level: str = "INFO"
     log_dir: str = "./logs"

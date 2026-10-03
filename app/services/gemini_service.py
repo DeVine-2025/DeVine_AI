@@ -1,6 +1,7 @@
 import re
 import json
 import logging
+import time
 from google import genai
 from google.genai import types, errors
 from json_repair import repair_json
@@ -185,6 +186,18 @@ _REPORT_SCHEMA = {
 }
 
 
+def usage_record(node: str, model: str, usage, t0: float) -> dict:
+    return {
+        "node": node,
+        "model": model,
+        "input": getattr(usage, "prompt_token_count", None) or 0,
+        "cached": getattr(usage, "cached_content_token_count", None) or 0,
+        "output": getattr(usage, "candidates_token_count", None) or 0,
+        "thinking": getattr(usage, "thoughts_token_count", None) or 0,
+        "ms": int((time.perf_counter() - t0) * 1000),
+    }
+
+
 class GeminiService:
     FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
     SYSTEM_INSTRUCTION = (
@@ -298,7 +311,8 @@ class GeminiService:
             return True
         return False
 
-    async def generate_content(self, prompt: str) -> dict:
+    async def generate_content(self, prompt: str, usage_sink: list | None = None, node: str = "single") -> dict:
+        """usage_sink를 주면 호출별 사용량(model, 토큰, 지연)을 dict로 append한다."""
         # 토큰 수 측정 후 시작 모델 결정
         try:
             token_count = await self._count_tokens(prompt)
@@ -315,7 +329,10 @@ class GeminiService:
 
         for current_idx, model_name in enumerate(self.FALLBACK_MODELS[start_idx:], start=start_idx):
             try:
+                t0 = time.perf_counter()
                 result, usage = await self._generate_content(prompt, model_name)
+                if usage_sink is not None:
+                    usage_sink.append(usage_record(node, model_name, usage, t0))
                 if usage:
                     input_tokens = usage.prompt_token_count
                     output_tokens = usage.candidates_token_count

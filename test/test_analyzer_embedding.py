@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.analyzer_service import analyzer_service
 from app.dtos.request_dto import ReportGenerationReq
+from app.report.pipeline import ReportOutcome
 
 
 # Mock 데이터
@@ -56,19 +57,9 @@ def mock_services():
         mock_clone = stack.enter_context(patch(f"{prefix}.clone_repository"))
         mock_cleanup = stack.enter_context(patch(f"{prefix}.cleanup_directory"))
         mock_mailmap = stack.enter_context(patch(f"{prefix}.create_mailmap"))
-        mock_tree = stack.enter_context(patch(f"{prefix}.build_project_tree"))
-        mock_tech = stack.enter_context(patch(f"{prefix}.detect_tech_stack"))
-        mock_files = stack.enter_context(patch(f"{prefix}.get_code_files"))
-        mock_lines = stack.enter_context(patch(f"{prefix}.count_lines"))
-        mock_test_files = stack.enter_context(patch(f"{prefix}.count_test_files"))
-        mock_commit_count = stack.enter_context(patch(f"{prefix}.get_commit_count"))
-        mock_commit_history = stack.enter_context(patch(f"{prefix}.get_commit_history"))
-        mock_contributor = stack.enter_context(patch(f"{prefix}.analyze_contributor_changes"))
-        mock_all_contributors = stack.enter_context(patch(f"{prefix}.get_all_contributors_summary"))
-        mock_dev_period = stack.enter_context(patch(f"{prefix}.get_development_period"))
         mock_identities = stack.enter_context(patch(f"{prefix}.get_user_author_identities_from_github"))
         mock_parse_url = stack.enter_context(patch(f"{prefix}.parse_repo_url"))
-        mock_gemini = stack.enter_context(patch(f"{prefix}.gemini_service.analyze_code", new_callable=AsyncMock))
+        mock_generate = stack.enter_context(patch(f"{prefix}.generate_report", new_callable=AsyncMock))
         mock_callback_success = stack.enter_context(patch(f"{prefix}.callback_service.send_success", new_callable=AsyncMock))
         mock_callback_failure = stack.enter_context(patch(f"{prefix}.callback_service.send_failure", new_callable=AsyncMock))
         mock_embedding = stack.enter_context(patch(f"{prefix}.embedding_service.create_embedding", new_callable=AsyncMock))
@@ -79,28 +70,16 @@ def mock_services():
         mock_clone.return_value = "/tmp/test_repo"
         mock_parse_url.return_value = {"owner": "test", "repo": "repo"}
         mock_identities.return_value = {"names": {"test_user"}, "emails": {"test@example.com"}}
-        mock_tree.return_value = "test_tree_structure"
-        mock_tech.return_value = {"JavaScript": ["React", "Node.js"]}
-        mock_files.return_value = ["file1.js", "file2.js"]
-        mock_lines.return_value = 100
-        mock_test_files.return_value = 5
-        mock_commit_count.return_value = 100
-        mock_commit_history.return_value = [{"hash": "abc123", "message": "test commit"}]
-        mock_contributor.return_value = {
-            "stats": {"totalCommits": 50, "totalAdded": 1000, "totalDeleted": 200, "filesModified": 10},
-            "files": {},
-            "commitMessages": ["test commit 1", "test commit 2"]
-        }
-        mock_all_contributors.return_value = {}
-        mock_dev_period.return_value = "2024-01-01 ~ 2024-02-09"
-        mock_gemini.return_value = MOCK_ANALYSIS_RESULT
+        mock_generate.return_value = ReportOutcome(
+            engine="legacy", content=MOCK_ANALYSIS_RESULT, techstacks=["PYTHON"]
+        )
         mock_embedding.return_value = MOCK_EMBEDDING_VECTOR
 
         yield {
             "github": mock_gh,
             "clone": mock_clone,
             "cleanup": mock_cleanup,
-            "gemini": mock_gemini,
+            "gemini": mock_generate,
             "callback_success": mock_callback_success,
             "callback_failure": mock_callback_failure,
             "embedding": mock_embedding,
@@ -131,7 +110,7 @@ class TestAnalyzerEmbedding:
             detail_report_id=mock_request.detailReportId,
             main_report_id=mock_request.mainReportId,
             content=MOCK_ANALYSIS_RESULT,
-            techstacks=[]
+            techstacks=["PYTHON"]
         )
 
         # 검증 4: 임베딩 생성
