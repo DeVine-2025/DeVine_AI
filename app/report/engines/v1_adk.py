@@ -156,12 +156,12 @@ async def verify_stage(ctx, node_input):
     st = _state(ctx)
     if st.stopped:
         return None
-    feats, stats = verify_and_merge(st.cards, st.idx, st.ledger)
+    first, _ = verify_and_merge(st.cards, st.idx, st.ledger)
     blamed = await asyncio.to_thread(
-        refine_with_blame, st.ctx.dir_path, st.ledger, [p for f in feats for p in f.paths], st.ctx.author_name, st.ctx.author_emails
+        refine_with_blame, st.ctx.dir_path, st.ledger, [p for f in first for p in f.paths], st.ctx.author_name, st.ctx.author_emails
     )
-    # blame으로 수준이 바뀌었을 수 있으니 기능 수준을 다시 계산
-    feats, stats2 = verify_and_merge(st.cards, st.idx, st.ledger)
+    # blame으로 파일 수준이 바뀌었을 수 있으니 기능 수준을 다시 계산
+    feats, stats = verify_and_merge(st.cards, st.idx, st.ledger)
     st.feats = feats
     st.events.append({"type": "verify", **stats, "features": len(feats), "blame_level_changed": blamed})
     if not feats:
