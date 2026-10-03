@@ -50,6 +50,9 @@ ARRAY_RULES = {
 }
 
 
+CASE_FILTER: set[str] = set()  # 비어 있으면 전체. --cases로 부분집합 비교
+
+
 def load_runs(base: str, engine: str) -> list[dict]:
     runs = []
     edir = os.path.join(base, engine)
@@ -57,7 +60,7 @@ def load_runs(base: str, engine: str) -> list[dict]:
         return runs
     for case in sorted(os.listdir(edir)):
         cdir = os.path.join(edir, case)
-        if not os.path.isdir(cdir):
+        if not os.path.isdir(cdir) or (CASE_FILTER and case not in CASE_FILTER):
             continue
         for f in sorted(os.listdir(cdir), key=lambda x: int(x.split(".")[0]) if x[0].isdigit() else 0):
             if f.endswith(".json"):
@@ -263,7 +266,8 @@ def engine_summary(base: str, engine: str, facts: dict, embed: bool = False) -> 
     s["success_rate"] = len(ok) / len(positive) if positive else None
     s["negative_blocked"] = (sum(1 for r in negative if not r.get("success")) / len(negative)) if negative else None
     s["failure_reasons"] = dict(Counter(r.get("failure_reason") for r in runs if not r.get("success")))
-    evented = [r for r in positive if r.get("events")]
+    trouble = {"retry", "node_failed", "fallback", "fallback_skipped", "tech_degraded", "workflow_error", "model_error"}
+    evented = [r for r in positive if any(e.get("type") in trouble for e in r.get("events", []))]
     s["recovered_rate"] = (sum(1 for r in evented if r.get("success")) / len(evented)) if evented else None
     s["fallback_rate"] = (sum(1 for r in positive if any(e.get("type") == "fallback" for e in r.get("events", []))) / len(positive)) if positive else None
 
@@ -407,5 +411,7 @@ if __name__ == "__main__":
     p.add_argument("base")
     p.add_argument("engines", nargs="+")
     p.add_argument("--embed", action="store_true")
+    p.add_argument("--cases", default="", help="쉼표로 구분한 케이스 id만 집계")
     a = p.parse_args()
+    CASE_FILTER.update(c for c in a.cases.split(",") if c)
     print(summarize(a.base, a.engines, a.embed))
