@@ -52,13 +52,14 @@ dependencies {
 
 
 def test_requirements_and_pyproject(tmp_path):
-    _write(tmp_path, "requirements.txt", "fastapi>=0.133,<1\npydantic==2.12.5\n# comment\nuvicorn[standard]\n")
+    _write(tmp_path, "requirements.txt", "fastapi>=0.133,<1\npydantic==2.12.5\n# comment\nuvicorn[standard]\nopenai >= 1.0.0\n")
     _write(tmp_path, "pyproject.toml", '[project]\nrequires-python = ">=3.11"\ndependencies = ["httpx==0.28.1", "google-genai>=2.19"]\n')
     v = parse_build_versions(str(tmp_path), ["requirements.txt", "pyproject.toml"])
-    assert v["fastapi"] == "0.133"
+    assert "fastapi" not in v and "openai" not in v  # 하한(>=)은 실제 버전이 아니므로 쓰지 않는다
     assert v["pydantic"] == "2.12.5"
     assert "uvicorn" not in v
     assert v["httpx"] == "0.28.1"
+    assert "google-genai" not in v
     assert v["python"] == "3.11"
 
 
