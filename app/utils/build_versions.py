@@ -57,7 +57,8 @@ def _requirements(text: str) -> Dict[str, str]:
     out = {}
     for line in text.splitlines():
         line = line.split("#", 1)[0].strip()
-        m = re.match(r"([A-Za-z0-9_.\-]+)(?:\[[^\]]*\])?\s*(==|>=|~=|>)\s*([^,;\s]+)", line)
+        # 정확히 고정한 버전(==)만 쓴다. >=, ~= 는 하한이라 실제 설치 버전과 다를 수 있다(P5 버전 오류)
+        m = re.match(r"([A-Za-z0-9_.\-]+)(?:\[[^\]]*\])?\s*(===?)\s*([^,;\s]+)", line)
         if m:
             v = clean_version(m.group(3))
             if v:
