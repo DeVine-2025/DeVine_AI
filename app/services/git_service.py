@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import stat
@@ -9,6 +10,9 @@ from typing import Dict, List, Optional, Set, Tuple
 from collections import Counter
 from datetime import datetime
 from app.errors.exceptions import GitCloneException, GitAuthException, RepoNotFoundException
+from app.utils.diff_filter import skip_reason, truncate_line
+
+logger = logging.getLogger(__name__)
 
 
 def mask_token_in_message(message: str, token: str = None) -> str:
@@ -365,6 +369,11 @@ def get_commit_history(dir_path: str, author_name: str = None, author_email: str
 
 
 def get_commit_diff(dir_path: str, commit_hash: str) -> dict:
+    """커밋 diff를 파일별 추가/삭제 줄로 나눈다.
+
+    lock 파일, 에셋, 빌드 생성물은 diff와 통계에서 모두 뺀다(excluded에 사유 기록).
+    삭제된 파일은 통계에는 넣고 내용(삭제 줄)은 넣지 않는다. 한 줄은 MAX_LINE_CHARS로 자른다.
+    """
     try:
         diff_result = subprocess.run(
             ["git", "show", "--format=", "--unified=3", commit_hash],
@@ -376,43 +385,46 @@ def get_commit_diff(dir_path: str, commit_hash: str) -> dict:
         )
 
         files = []
-        current_file = None
-        added_lines = []
-        deleted_lines = []
+        excluded = {}
+        current = None
+        total_added = 0
+        total_deleted = 0
+
+        def flush():
+            if current and current["reason"] is None:
+                files.append({"path": current["path"], "added": current["added"], "deleted": current["deleted"]})
 
         for line in diff_result.stdout.split("\n"):
             if line.startswith("diff --git"):
-                if current_file:
-                    files.append({
-                        "path": current_file,
-                        "added": added_lines,
-                        "deleted": deleted_lines
-                    })
+                flush()
                 parts = line.split(" b/")
-                current_file = parts[-1] if len(parts) > 1 else None
-                added_lines = []
-                deleted_lines = []
+                path = parts[-1] if len(parts) > 1 else None
+                reason = skip_reason(path) if path else "unknown"
+                if path and reason:
+                    excluded[path] = reason
+                current = {"path": path, "reason": reason, "added": [], "deleted": [], "file_deleted": False}
+            elif current is None:
+                continue
+            elif line.startswith("deleted file mode"):
+                current["file_deleted"] = True
             elif line.startswith("+") and not line.startswith("+++"):
-                added_lines.append(line[1:])
+                if current["reason"] is None:
+                    total_added += 1
+                    current["added"].append(truncate_line(line[1:]))
             elif line.startswith("-") and not line.startswith("---"):
-                deleted_lines.append(line[1:])
-
-        if current_file:
-            files.append({
-                "path": current_file,
-                "added": added_lines,
-                "deleted": deleted_lines
-            })
-
-        total_added = sum(len(f["added"]) for f in files)
-        total_deleted = sum(len(f["deleted"]) for f in files)
+                if current["reason"] is None:
+                    total_deleted += 1
+                    if not current["file_deleted"]:
+                        current["deleted"].append(truncate_line(line[1:]))
+        flush()
 
         return {
             "files": files,
+            "excluded": excluded,
             "stats": {"added": total_added, "deleted": total_deleted}
         }
     except Exception:
-        return {"files": [], "stats": {"added": 0, "deleted": 0}}
+        return {"files": [], "excluded": {}, "stats": {"added": 0, "deleted": 0}}
 
 
 def analyze_contributor_changes(
@@ -427,6 +439,7 @@ def analyze_contributor_changes(
 
     file_changes = {}
     commit_messages = []
+    excluded = {}
     total_added = 0
     total_deleted = 0
 
@@ -436,6 +449,7 @@ def analyze_contributor_changes(
 
         total_added += diff["stats"]["added"]
         total_deleted += diff["stats"]["deleted"]
+        excluded.update(diff.get("excluded", {}))
 
         for file in diff["files"]:
             path = file["path"]
@@ -457,9 +471,13 @@ def analyze_contributor_changes(
                 "deleted": file["deleted"][:max_deleted_lines]
             })
 
+    if excluded:
+        logger.info(f"diff 필터로 제외한 파일 {len(excluded)}개: {dict(list(excluded.items())[:20])}")
+
     return {
         "commits": commits,
         "files": file_changes,
+        "excluded": excluded,
         "stats": {
             "totalCommits": len(commits),
             "totalAdded": total_added,
@@ -530,7 +548,7 @@ def get_development_period(dir_path: str) -> str:
 def get_all_contributors_summary(dir_path: str, exclude_author: str = None, exclude_emails: List[str] = None) -> dict:
     try:
         result = subprocess.run(
-            ["git", "shortlog", "-sne", "--no-merges", "--use-mailmap"],
+            ["git", "shortlog", "-sne", "--no-merges", "HEAD"],
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -561,8 +579,77 @@ def get_all_contributors_summary(dir_path: str, exclude_author: str = None, excl
                 if exclude_emails_lower and author_email_parsed.lower() in exclude_emails_lower:
                     continue
 
-                contributors[author_name] = {"commits": count}
+                if author_name in contributors:
+                    contributors[author_name]["commits"] += count
+                else:
+                    contributors[author_name] = {"commits": count, "email": author_email_parsed}
 
         return contributors
     except Exception:
         return {}
+
+
+def get_other_contributor_details(
+    dir_path: str,
+    exclude_author: str = None,
+    exclude_emails: List[str] = None,
+    max_contributors: int = 10,
+    top_dirs: int = 5,
+    max_subjects: int = 10,
+) -> List[dict]:
+    """다른 기여자별 커밋 수, 많이 고친 디렉터리, 최근 커밋 제목. 기여 귀속(P2) 판단용."""
+    summary = get_all_contributors_summary(dir_path, exclude_author=exclude_author, exclude_emails=exclude_emails)
+    result = []
+    for name, data in sorted(summary.items(), key=lambda x: -x[1]["commits"])[:max_contributors]:
+        try:
+            out = subprocess.run(
+                ["git", "log", "--no-merges", "--use-mailmap", "-F", "--author", data.get("email") or name,
+                 "--format=@@%s", "--name-only", "HEAD"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=dir_path,
+            ).stdout
+        except Exception:
+            out = ""
+        subjects, dirs = [], Counter()
+        for line in out.splitlines():
+            if line.startswith("@@"):
+                subjects.append(line[2:])
+            elif line.strip() and not skip_reason(line):
+                parts = line.split("/")
+                dirs["/".join(parts[:2]) if len(parts) > 2 else (parts[0] if len(parts) > 1 else ".")] += 1
+        result.append({
+            "name": name,
+            "commits": data["commits"],
+            "top_dirs": [d for d, _ in dirs.most_common(top_dirs)],
+            "recent_subjects": subjects[:max_subjects],
+        })
+    return result
+
+
+def get_rename_map(dir_path: str) -> Dict[str, str]:
+    """옛 경로 → HEAD 경로. 여러 번 바뀐 경로는 끝까지 따라간다. HEAD에 다시 생긴 경로는 매핑하지 않는다."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "-M", "--name-status", "--format=", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=dir_path,
+        ).stdout
+        head = set(subprocess.run(
+            ["git", "ls-files"], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=dir_path,
+        ).stdout.splitlines())
+    except Exception:
+        return {}
+    direct: Dict[str, str] = {}
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[0].startswith("R"):
+            direct.setdefault(parts[1], parts[2])
+    resolved = {}
+    for old in direct:
+        if old in head:
+            continue
+        cur, seen = old, set()
+        while cur in direct and cur not in seen:
+            seen.add(cur)
+            cur = direct[cur]
+        if cur in head:
+            resolved[old] = cur
+    return resolved
