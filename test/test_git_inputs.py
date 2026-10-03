@@ -66,6 +66,7 @@ def test_contributor_stats_exclude_lockfiles(repo):
     assert res["stats"]["totalCommits"] == 2
     assert "pnpm-lock.yaml" not in res["files"]
     assert res["excluded"]["pnpm-lock.yaml"] == "lockfile"
+    assert all(len(ch["hash"]) == 40 for f in res["files"].values() for ch in f["changes"])
 
 
 def test_shortlog_returns_other_contributors(repo):

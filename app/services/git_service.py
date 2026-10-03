@@ -465,6 +465,7 @@ def analyze_contributor_changes(
             file_changes[path]["totalAdded"] += len(file["added"])
             file_changes[path]["totalDeleted"] += len(file["deleted"])
             file_changes[path]["changes"].append({
+                "hash": commit["hash"],
                 "date": commit["date"][:10],
                 "message": commit["message"],
                 "added": file["added"][:max_added_lines],
