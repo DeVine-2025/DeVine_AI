@@ -46,3 +46,11 @@ cases:
     sha: "e26ef46"
     author: {name: ghost-nobody, emails: ["ghost-nobody@example.invalid"]}
     tags: [negative]
+
+  # 2026-10-05 추가: 사용자 요청 비교 케이스(Spring, 작성자 = 사용자 본인)
+  # 이메일이 "=" 로 기록된 heo 커밋 88개는 GitHub 계정에 연결될 수 없어 운영 신원 조회에서도 빠지므로 여기서도 넣지 않는다
+  - id: channeling-be-v2
+    repo_url: https://github.com/channeling-ai/BE-V2
+    sha: "c041005"
+    author: {name: HEO YUJIN, emails: ["81500596+yujin9907@users.noreply.github.com", "qetyop9762@gmail.com", "qetyop2679@gmail.com"]}
+    tags: [backend, java, spring, medium]
