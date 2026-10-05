@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # Internal API Key (Backend callback auth)
     internal_api_key: str = ""
 
+    # Orchestration PoC
+    use_orchestration: bool = True
+    orchestration_feature_model: str = "gemini-2.5-flash"
+    orchestration_insight_model: str = "gemini-2.5-flash"
+
     # Logging
     log_level: str = "INFO"
     log_dir: str = "./logs"
