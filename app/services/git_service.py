@@ -364,6 +364,13 @@ def get_commit_history(dir_path: str, author_name: str = None, author_email: str
     return sorted_commits
 
 
+IGNORED_DIFF_EXTENSIONS = {
+    ".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".bmp",
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    ".lock", ".map", ".min.js", ".min.css"
+}
+
+
 def get_commit_diff(dir_path: str, commit_hash: str) -> dict:
     try:
         diff_result = subprocess.run(
@@ -377,12 +384,13 @@ def get_commit_diff(dir_path: str, commit_hash: str) -> dict:
 
         files = []
         current_file = None
+        current_is_ignored = False
         added_lines = []
         deleted_lines = []
 
         for line in diff_result.stdout.split("\n"):
             if line.startswith("diff --git"):
-                if current_file:
+                if current_file and not current_is_ignored:
                     files.append({
                         "path": current_file,
                         "added": added_lines,
@@ -390,14 +398,17 @@ def get_commit_diff(dir_path: str, commit_hash: str) -> dict:
                     })
                 parts = line.split(" b/")
                 current_file = parts[-1] if len(parts) > 1 else None
+                ext = os.path.splitext(current_file)[1].lower() if current_file else ""
+                current_is_ignored = ext in IGNORED_DIFF_EXTENSIONS
                 added_lines = []
                 deleted_lines = []
-            elif line.startswith("+") and not line.startswith("+++"):
-                added_lines.append(line[1:])
-            elif line.startswith("-") and not line.startswith("---"):
-                deleted_lines.append(line[1:])
+            elif not current_is_ignored:
+                if line.startswith("+") and not line.startswith("+++"):
+                    added_lines.append(line[1:])
+                elif line.startswith("-") and not line.startswith("---"):
+                    deleted_lines.append(line[1:])
 
-        if current_file:
+        if current_file and not current_is_ignored:
             files.append({
                 "path": current_file,
                 "added": added_lines,

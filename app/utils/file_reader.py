@@ -19,6 +19,14 @@ SKIP_FILES = {
     ".DS_Store", "Thumbs.db", "desktop.ini",
 }
 
+# 코드 분석에서 제외할 그래픽, 미디어, 폰트 애셋
+SKIP_EXTENSIONS = {
+    ".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".bmp", ".tiff",
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    ".mp3", ".mp4", ".wav", ".avi", ".mov",
+    ".pdf", ".zip", ".tar", ".gz"
+}
+
 
 def get_all_files(dir_path: str) -> List[str]:
     files = []
@@ -64,6 +72,11 @@ def get_code_files(dir_path: str) -> List[str]:
 
         # 락파일/OS 메타 스킵
         if filename in SKIP_FILES:
+            continue
+
+        # 그래픽/미디어/폰트 애셋 스킵 (SVG 등)
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in SKIP_EXTENSIONS:
             continue
 
         # 미니파이된 파일 스킵 (예: bundle.min.js, app.min.css)

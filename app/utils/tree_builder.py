@@ -38,11 +38,18 @@ def build_directory_tree(dir_path: str, base_path: str, depth: int = 0, max_dept
             "dockerfile", "docker-compose.yml", "readme.md"
         ]
 
+        ignored_extensions = {
+            ".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
+            ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".mp3", ".pdf", ".lock"
+        }
+
         for entry in files:
             if entry.startswith(".") and entry != ".env.example":
                 continue
 
             ext = os.path.splitext(entry)[1].lower()
+            if ext in ignored_extensions:
+                continue
 
             if depth <= 1 or entry.lower() in important_files or ext in code_extensions:
                 tree["children"].append({
@@ -78,8 +85,8 @@ def tree_to_text(tree: Dict[str, Any], prefix: str = "", is_last: bool = True) -
     return result
 
 
-def build_project_tree(dir_path: str) -> str:
-    tree = build_directory_tree(dir_path, dir_path, 0, 4)
+def build_project_tree(dir_path: str, max_depth: int = 15) -> str:
+    tree = build_directory_tree(dir_path, dir_path, 0, max_depth)
 
     result = f"{tree['name']}/\n"
 
@@ -91,3 +98,23 @@ def build_project_tree(dir_path: str) -> str:
             result += tree_to_text(child, "", is_last)
 
     return result
+
+
+def get_all_relative_file_paths(dir_path: str) -> set[str]:
+    """저장소 내 모든 유효한 파일의 상대 경로 집합 반환 (경로 검증용)"""
+    valid_paths = set()
+    for root, dirs, files in os.walk(dir_path):
+        # 제외 대상 디렉토리 필터링
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS]
+
+        for file in files:
+            if file.startswith(".") and file != ".env.example":
+                continue
+            ext = os.path.splitext(file)[1].lower()
+            if ext in {".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".woff", ".woff2", ".ttf", ".eot", ".lock"}:
+                continue
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, dir_path).replace("\\", "/")
+            valid_paths.add(rel_path)
+
+    return valid_paths
