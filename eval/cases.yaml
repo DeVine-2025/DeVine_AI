@@ -54,3 +54,10 @@ cases:
     sha: "c041005"
     author: {name: HEO YUJIN, emails: ["81500596+yujin9907@users.noreply.github.com", "qetyop9762@gmail.com", "qetyop2679@gmail.com"]}
     tags: [backend, java, spring, medium]
+
+  # 2026-10-05 추가: 배포 설정 레포(docker compose·IaC). 커밋 전부 작성자 본인
+  - id: devine-deploy
+    repo_url: https://github.com/DeVine-2025/Devine_Deploy
+    sha: "1bf0dba"
+    author: {name: HEO YUJIN, emails: ["81500596+yujin9907@users.noreply.github.com", "qetyop9762@gmail.com", "qetyop2679@gmail.com"]}
+    tags: [infra, small]
