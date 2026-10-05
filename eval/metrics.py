@@ -102,8 +102,11 @@ def code_locations(content: dict) -> list[str]:
 
 
 def _norm_path(p: str) -> str:
-    p = p.strip().strip("`").lstrip("./")
-    return re.split(r"[:#\s(]", p)[0] if p else p
+    """앞의 './', 줄 번호(:12, #L10), 뒤에 붙은 설명(' (...)', ' - ...')만 뗀다.
+    점으로 시작하는 파일(.gitignore)과 Next.js 라우트 그룹 '(group)'은 경로의 일부이므로 남긴다."""
+    p = p.strip().strip("`'\"").strip()
+    p = re.sub(r"^\./", "", p).lstrip("/")
+    return re.split(r"(?::\d|#L\d|\s\(|\s-\s)", p)[0].strip() if p else p
 
 
 def path_validity(content: dict, facts: dict) -> tuple[int, int, int]:
