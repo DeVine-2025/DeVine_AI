@@ -31,7 +31,8 @@ from app.utils.text_processor import extract_embedding_text
 from app.prompts.combined_report_prompt import get_combined_report_prompt
 from app.errors.exceptions import AuthorMatchException
 from app.services.orchestration.pipeline import OrchestrationPipeline
-from app.utils.diff_budgeter import budget_file_changes, budget_tree_structure
+from app.utils.diff_budgeter import budget_file_changes, budget_file_changes_v3, budget_tree_structure
+from app.utils.metadata_extractor import extract_change_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -240,11 +241,13 @@ class AnalyzerService:
             contributor_changes["commitMessages"][:limits.max_commit_messages]
         )
 
-        file_changes, _ = budget_file_changes(
-            contributor_changes["files"],
-            max_files=min(limits.max_files, 45),
-            max_commits_per_file=min(limits.max_commits_per_file, 8)
-        )
+        change_meta = extract_change_metadata(contributor_changes["files"], contributor_changes["stats"])
+        business_diff, infra_diff, _ = budget_file_changes_v3(contributor_changes["files"])
+
+        # 레거시 단일 프롬프트용 통합 diff
+        combined_file_changes = business_diff
+        if infra_diff:
+            combined_file_changes += "\n\n=== [인프라 및 환경 설정 파일 변경 내역] ===\n" + infra_diff
 
         author_modified_files = [f["path"] for f in contributor_changes["files"]]
 
@@ -272,7 +275,10 @@ class AnalyzerService:
             "lines_deleted": contributor_changes["stats"]["totalDeleted"],
             "files_modified": contributor_changes["stats"]["filesModified"],
             "commit_messages": commit_messages,
-            "file_changes": file_changes,
+            "file_changes": business_diff,
+            "infra_changes": infra_diff,
+            "change_metadata": change_meta["summary_text"],
+            "combined_file_changes": combined_file_changes,
             "author_modified_files": author_modified_files,
             "other_contributors": other_contributors_str,
             "development_period": development_period,
@@ -296,7 +302,7 @@ class AnalyzerService:
             lines_deleted=ctx["lines_deleted"],
             files_modified=ctx["files_modified"],
             commit_messages=ctx["commit_messages"],
-            file_changes=ctx["file_changes"],
+            file_changes=ctx["combined_file_changes"],
             other_contributors=ctx["other_contributors"],
             development_period=ctx["development_period"],
             test_code_count=ctx["test_code_count"],
@@ -334,6 +340,8 @@ class AnalyzerService:
                 development_period=ctx["development_period"],
                 available_techstacks=ctx["available_techstacks"],
                 author_modified_files=ctx["author_modified_files"],
+                change_metadata=ctx["change_metadata"],
+                infra_changes=ctx["infra_changes"],
             )
             return orch_result.report
 

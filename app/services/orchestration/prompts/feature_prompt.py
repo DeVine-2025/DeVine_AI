@@ -1,70 +1,62 @@
-# Stage 1: Feature & Code Analysis Prompt
+# Stage 1: Feature Extraction Prompt (v3 with AST, Metadata, Infra Guard)
 
-FEATURE_ANALYSIS_PROMPT = """\
-You are an expert software engineer and code auditor.
-Your mission is to perform a strict, fact-based code analysis of contributions made by "{author_name}" in the repository "{repo_url}".
+FEATURE_EXTRACTION_PROMPT = """당신은 개발자의 Git 커밋 히스토리와 코드 변경사항을 분석하여 구현 기능, 인프라 기여, 기술 스택을 정확하게 추출하는 전문 테크니컬 리드 분석관입니다.
 
-=== Repository Information ===
-Repository: {repo_url}
-Total Commits: {total_commits}
-Commits by {author_name}: {user_commits}
-Contribution Ratio: {contribution_ratio:.1f}%
+다음 정보를 바탕으로 {author_name} 개발자의 기여 내용을 정밀하게 분석하십시오.
 
-=== Detected Tech Stack & Enums ===
-Detected Tech Stack:
+## 프로젝트 정보
+- 저장소: {repo_url}
+- 분석 대상: {author_name}
+- 커밋 기여: 전체 {total_commits}개 중 {user_commits}개 ({contribution_ratio:.1f}%)
+- 추가/삭제: +{lines_added:,} / -{lines_deleted:,} 라인
+- 변경 파일 수: {files_modified}개
+
+## 전체 변경 규모 및 통계 메타데이터 (Scale & Scope)
+{change_metadata}
+
+## 감지된 기술 스택
 {tech_stack}
 
-Available Techstack Enum Values:
-{available_techstacks}
-
-=== Project Structure (Full Depth) ===
+## 프로젝트 디렉터리 구조
 {tree_structure}
 
-=== Code Change Statistics for {author_name} ===
-Total Lines Added: {lines_added}
-Total Lines Deleted: {lines_deleted}
-Files Modified: {files_modified}
-
-=== Commit Messages by {author_name} ===
+## 커밋 메시지 히스토리
 {commit_messages}
 
-=== Files Modified and Code Diffs/Changes by {author_name} ===
+## 주요 비즈니스 로직 코드 변경 내역 (Diff)
 {file_changes}
 
-=== Other Contributors ===
+## 인프라 및 빌드/배포 환경 설정 변경 내역 (Dedicated Infra Diff)
+{infra_changes}
+
+## 다른 기여자 현황 (본인 기여와 엄격히 구분할 것)
 {other_contributors}
 
-============================================================
-CRITICAL INSTRUCTIONS & ACCURACY RULES:
-============================================================
-1. FACT-BASED ONLY (NO HALLUCINATION):
-   - Only describe features that {author_name} ACTUALLY implemented based on the commit messages and code changes provided.
-   - Do NOT invent or exaggerate features that are not explicitly present in the code diffs or commit history.
-   - If {author_name} only fixed a bug or styled a component, describe exactly that. Do NOT claim they built the entire subsystem.
+---
 
-2. STRICT AUTHOR ATTRIBUTION (DO NOT ATTRIBUTE OTHER'S WORK):
-   - Examine "Other Contributors" and file diffs carefully.
-   - If a file or architecture was created by another contributor and {author_name} only imported or modified a small part, clearly distinguish it.
-   - In "projectSummary":
-     - "implemented": list 3 to 5 features that {author_name} personally built.
-     - "notImplemented": list 1 to 3 features in this repository that were built by OTHER contributors (NOT {author_name}).
+## 분석 지침 (엄격 준수)
 
-3. ACCURATE FILE PATHS (CRITICAL):
-   - Every "codeLocation" path MUST EXACTLY MATCH a real file path present in the "Project Structure" tree above.
-   - Do NOT use shortened paths, aliases, or guess non-existent directories.
-   - Do NOT reference files that were deleted or renamed in past commits if they no longer exist in the current project structure.
+1. **전체 변경 규모 및 메타데이터 (migrationMeta)**:
+   - 개발자가 수정한 전체 파일 수와 디렉토리 분포를 확인하십시오.
+   - 30개 이상의 파일 또는 광범위한 리팩토링이 확인될 경우, 'isLargeScale': true로 설정하고, 대표적인 15~25개 파일을 선별한 배경 맥락을 'scopeDescription'에 명시하십시오.
 
-4. STRICT ARRAY BOUNDS & QUANTITY CAPS (STRICT BOUNDS - DO NOT EXCEED):
-   - keyImplementations: exactly 2 to 3 items, each with title, description, and 2 to 3 capabilities.
-   - implementedFeatures: exactly 3 to 4 categories, each with 2 to 3 features.
-   - implementedFeatures[].features[].codeLocation: exactly 1 to 3 KEY files only. Do NOT list minor helper files, secondary types, or icons.
-   - TOTAL codeLocation paths across the entire report MUST BE BETWEEN 15 AND 25 FILES. Do NOT exceed 25 file paths in total.
-   - projectSummary.implemented: exactly 3 to 4 items.
-   - projectSummary.notImplemented: exactly 2 to 3 items.
-   - codeInsights: exactly 2 to 3 items, each with 2 to 3 points and 1 to 2 key codeLocation paths.
-   - techstacks: array of enum strings that {author_name} directly used (e.g. ["TYPESCRIPT", "REACT", "NEXTJS"]).
+2. **인프라 및 환경 설정 기여 (infraAndDevOps)**:
+   - '인프라 및 빌드/배포 환경 설정 변경 내역'에 Docker, CI/CD, Terraform, Nginx, 패키지 설정(package.json 등), 빌드 스크립트 등의 기여가 있는 경우 이를 독립적으로 포착하십시오.
+   - 인프라 기여가 명확한 경우 'hasInfraWork': true로 설정하고 사용 기술, 기여 요약, 핵심 파일을 작성하십시오. (해당 작업이 없으면 false)
 
-Respond in valid JSON conforming to the requested schema. Write all descriptive text in Korean (한국어).
+3. **구현 기능 (implementedFeatures) 수량 상한선 준수**:
+   - 카테고리 수: **최대 3~4개**로 엄격히 제한하십시오.
+   - 카테고리당 기능 수: **최대 2~3개**로 제한하십시오.
+   - **codeLocation 경로 엄격성**: 기능당 **가장 핵심적인 1~3개의 실제 코드 파일 경로만** 기재하십시오. (아이콘, 단순 CSS, 락파일은 배제하고 컴포넌트/훅/API/비즈니스로직 파일 위주로 선정)
+   - 전체 리포트에 포함되는 총 코드 경로는 **15~25개 내외로 집중**하십시오.
+
+4. **기술 스택 (techstacks)**:
+   - {author_name} 개발자가 **직접 작성하거나 수정한 코드에서 실제로 사용한 기술**만 선택하십시오.
+
+5. **본인 vs 타인 기여 구분 (myFeatures / otherFeatures)**:
+   - {author_name} 개발자가 직접 구현한 기능과 다른 기여자가 구현한 기능을 명확히 구분하십시오.
+
+결과는 반드시 지정된 JSON 스키마를 엄격히 준수하여 출력하십시오.
 """
 
 
@@ -82,15 +74,11 @@ def get_feature_analysis_prompt(
     commit_messages: str,
     file_changes: str,
     other_contributors: str,
+    change_metadata: str = "",
+    infra_changes: str = "",
     available_techstacks: list = None,
 ) -> str:
-    techstacks_str = (
-        ", ".join(available_techstacks)
-        if available_techstacks
-        else "No techstacks provided"
-    )
-
-    return FEATURE_ANALYSIS_PROMPT.format(
+    return FEATURE_EXTRACTION_PROMPT.format(
         repo_url=repo_url,
         author_name=author_name,
         total_commits=total_commits,
@@ -103,6 +91,7 @@ def get_feature_analysis_prompt(
         files_modified=files_modified,
         commit_messages=commit_messages,
         file_changes=file_changes,
+        infra_changes=infra_changes or "(인프라 및 환경 설정 파일 변경 내역 없음)",
         other_contributors=other_contributors,
-        available_techstacks=techstacks_str,
+        change_metadata=change_metadata or "(메타데이터 없음)",
     )

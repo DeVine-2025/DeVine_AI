@@ -1,4 +1,4 @@
-# Stage 2: Insight & Synthesis Prompt
+# Stage 2: Insight & Synthesis Prompt (v3 with Infra & Metadata)
 
 INSIGHT_ANALYSIS_PROMPT = """\
 You are an executive engineering manager and principal tech evaluator.
@@ -10,6 +10,12 @@ Total Files: {total_files}
 Total Code Lines: {total_lines}
 Development Period: {development_period}
 Technologies Used by {author_name}: {author_techstacks}
+
+=== Global Change Scale & Migration Metadata ===
+{migration_metadata_summary}
+
+=== Verified Infrastructure & DevOps Contributions ===
+{infra_contributions_summary}
 
 === Verified Key Implementations by {author_name} (Extracted & Audited) ===
 {key_implementations_summary}
@@ -29,6 +35,8 @@ EVALUATION & SYNTHESIS INSTRUCTIONS:
 ============================================================
 1. COHERENCE WITH STAGE 1 FINDINGS:
    - Your evaluation, improvements, and next steps must be logically grounded in the verified features and code insights provided above.
+   - If significant Infrastructure/DevOps work (Docker, CI/CD, Terraform, K8s, etc.) is verified, make sure to highlight it in aiEvaluation or overview capabilities.
+   - If large-scale refactoring/migration is detected, acknowledge their broad architectural impact in the scale and evaluation.
    - Do NOT contradict the verified facts. Do NOT invent new libraries or frameworks that were not used.
 
 2. DEPTH & TECHNICAL ACCURACY:
@@ -59,6 +67,8 @@ def get_insight_analysis_prompt(
     verified_features_summary: str,
     implemented_summary: str,
     not_implemented_summary: str,
+    migration_metadata_summary: str = "",
+    infra_contributions_summary: str = "",
 ) -> str:
     return INSIGHT_ANALYSIS_PROMPT.format(
         repo_url=repo_url,
@@ -71,4 +81,6 @@ def get_insight_analysis_prompt(
         verified_features_summary=verified_features_summary,
         implemented_summary=implemented_summary,
         not_implemented_summary=not_implemented_summary,
+        migration_metadata_summary=migration_metadata_summary or "(마이그레이션 메타데이터 없음 - 표준 기능 개발)",
+        infra_contributions_summary=infra_contributions_summary or "(인프라 및 DevOps 전용 기여 없음)",
     )

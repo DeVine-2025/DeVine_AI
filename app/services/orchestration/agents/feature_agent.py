@@ -81,6 +81,8 @@ class FeatureAgent:
         file_changes: str,
         other_contributors: str,
         available_techstacks: list = None,
+        change_metadata: str = "",
+        infra_changes: str = "",
     ) -> tuple[dict, dict]:
         """
         Stage 1 분석 실행
@@ -100,6 +102,8 @@ class FeatureAgent:
             commit_messages=commit_messages,
             file_changes=file_changes,
             other_contributors=other_contributors,
+            change_metadata=change_metadata,
+            infra_changes=infra_changes,
             available_techstacks=available_techstacks,
         )
 

@@ -1,38 +1,40 @@
 """
-Diff & Tree Budgeter (상한선 및 비례 절단 모듈)
+Diff & Tree Budgeter v3 (상한선, 비례 절단, AST 구조 압축 및 인프라 분리 모듈)
 참고: C:\\git\\umc11th\\workbook_backend\\src\\domain\\notion\\parser.ts (DEFAULT_MAX_CONTEXT_CHARS 비례 절단 패턴)
 
-대용량 저장소의 Git Diff와 디렉토리 트리가 프롬프트 전체를 잠식하여
-1) 콜드 스타트 지연(80~110초), 2) 비용 폭증, 3) 컨텍스트 오염을 유발하는 문제를 방지합니다.
+v3 고도화 기능:
+1) AST & Code Outliner 연동: 단일 거대 파일(1,000줄 이상)에서 함수/클래스 시그니처 우선 보존 및 본문 압축
+2) Dedicated Infra Budget: 비즈니스 로직 diff와 인프라/설정 diff를 분리하여 인프라 기여 독립 보장
+3) 디렉토리 트리 상한선 보존
 """
 
 import logging
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
+
+from app.utils.code_outliner import compress_diff_block
+from app.utils.infra_detector import is_infra_file, partition_file_changes
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_DIFF_CHARS = 80_000   # 약 20,000 ~ 25,000 토큰 상한
-DEFAULT_MAX_TREE_CHARS = 35_000   # 약 8,000 ~ 10,000 토큰 상한
+DEFAULT_MAX_BUSINESS_DIFF_CHARS = 60_000   # 비즈니스 로직 diff 상한
+DEFAULT_MAX_INFRA_DIFF_CHARS = 25_000      # 인프라/설정 diff 전용 독립 예산
+DEFAULT_MAX_DIFF_CHARS = 80_000            # 레거시 호환 총 상한
+DEFAULT_MAX_TREE_CHARS = 35_000            # 디렉토리 트리 상한
 
 
-def budget_file_changes(
+def _format_and_budget_file_group(
     files: Dict[str, Any],
-    max_total_chars: int = DEFAULT_MAX_DIFF_CHARS,
-    max_files: int = 45,
+    max_total_chars: int,
+    max_files: int = 35,
     max_commits_per_file: int = 8,
     min_chars_per_file: int = 350,
+    per_file_collapse_threshold: int = 5000,
 ) -> Tuple[str, bool]:
-    """
-    각 파일의 변경 분량을 총량 상한(max_total_chars) 내로 비례 절단(Proportional Truncation)합니다.
-    특정 대용량 파일이 전체 예산을 독점하지 않고, 모든 수정 파일의 핵심 변경점이 균형 있게 포함됩니다.
-    
-    Returns:
-        (조립된 diff 문자열, 절단 발생 여부)
-    """
+    """단일 그룹(비즈니스 또는 인프라)의 파일들을 AST 압축 및 비례 절단"""
     if not files:
         return "", False
 
-    # 1. 파일 우선순위 정렬: 커밋 횟수 및 추가/삭제 라인 수 기준
+    # 커밋 수 및 라인 변경량 기준 정렬
     sorted_files = sorted(
         files.items(),
         key=lambda item: (
@@ -59,19 +61,26 @@ def budget_file_changes(
             if deleted:
                 block_lines.append("-삭제:\n" + "\n".join(deleted) + "\n")
 
-        file_blocks.append((path, "".join(block_lines)))
+        raw_block_text = "".join(block_lines)
+
+        # 거대 파일의 경우 AST / Code Outliner로 구조적 압축 선행 적용
+        if len(raw_block_text) > per_file_collapse_threshold:
+            compressed_block = compress_diff_block(
+                file_path=path,
+                diff_text=raw_block_text,
+                target_max_chars=per_file_collapse_threshold,
+            )
+            file_blocks.append((path, compressed_block))
+        else:
+            file_blocks.append((path, raw_block_text))
 
     total_chars = sum(len(b[1]) for b in file_blocks)
-    logger.info(f"[DiffBudgeter] 원본 diff 글자수: {total_chars:,}자 ({len(file_blocks)}개 파일)")
 
     if total_chars <= max_total_chars:
         return "".join(b[1] for b in file_blocks), False
 
-    # 2. 비례 절단 (Proportional Truncation) 적용
-    # ratio에 따라 각 파일의 블록 길이를 균등하게 축소
+    # 비례 절단 (Proportional Truncation) 적용
     ratio = max_total_chars / total_chars
-    logger.info(f"[DiffBudgeter] 상한선({max_total_chars:,}자) 초과 감지 -> 비례 축소 계수 {ratio:.3f} 적용")
-
     budgeted_blocks: List[str] = []
     for path, block in file_blocks:
         keep_length = max(min_chars_per_file, int(len(block) * ratio))
@@ -85,31 +94,83 @@ def budget_file_changes(
             budgeted_blocks.append(block)
 
     result_text = "".join(budgeted_blocks)
-    logger.info(f"[DiffBudgeter] 비례 절단 완료: {len(result_text):,}자 (감소율: {(1 - len(result_text)/total_chars)*100:.1f}%)")
     return result_text, True
+
+
+def budget_file_changes_v3(
+    files: Dict[str, Any],
+    max_business_chars: int = DEFAULT_MAX_BUSINESS_DIFF_CHARS,
+    max_infra_chars: int = DEFAULT_MAX_INFRA_DIFF_CHARS,
+) -> Tuple[str, str, bool]:
+    """
+    v3 이원화 Diff 예산 배분 함수.
+    비즈니스 로직과 인프라/설정 파일을 분리하여 독립 예산을 부여하고 AST 압축을 적용합니다.
+
+    Returns:
+        (business_diff, infra_diff, is_truncated)
+    """
+    business_files, infra_files = partition_file_changes(files)
+    logger.info(
+        f"[DiffBudgeterV3] 파일 이원화 분리: 비즈니스 로직 {len(business_files)}개, 인프라/설정 {len(infra_files)}개"
+    )
+
+    business_diff, b_trunc = _format_and_budget_file_group(
+        business_files,
+        max_total_chars=max_business_chars,
+        max_files=35,
+        per_file_collapse_threshold=6000
+    )
+
+    infra_diff, i_trunc = _format_and_budget_file_group(
+        infra_files,
+        max_total_chars=max_infra_chars,
+        max_files=20,
+        per_file_collapse_threshold=4500
+    )
+
+    is_truncated = b_trunc or i_trunc
+    logger.info(
+        f"[DiffBudgeterV3] 예산 배정 완료 -> 비즈니스: {len(business_diff):,}자, 인프라: {len(infra_diff):,}자"
+    )
+    return business_diff, infra_diff, is_truncated
+
+
+def budget_file_changes(
+    files: Dict[str, Any],
+    max_total_chars: int = DEFAULT_MAX_DIFF_CHARS,
+    max_files: int = 45,
+    max_commits_per_file: int = 8,
+    min_chars_per_file: int = 350,
+) -> Tuple[str, bool]:
+    """기존 파이프라인 호환용 단일 통합 diff 반환 함수"""
+    b_diff, i_diff, trunc = budget_file_changes_v3(
+        files,
+        max_business_chars=int(max_total_chars * 0.7),
+        max_infra_chars=int(max_total_chars * 0.3)
+    )
+    combined = b_diff
+    if i_diff:
+        combined += "\n\n=== [인프라 및 환경 설정 파일 변경 내역] ===\n" + i_diff
+    return combined, trunc
 
 
 def budget_tree_structure(
     tree_text: str,
     max_chars: int = DEFAULT_MAX_TREE_CHARS
 ) -> Tuple[str, bool]:
-    """
-    디렉토리 트리 문자열이 상한을 넘으면 상위 핵심 구조 위주로 절단합니다.
-    """
+    """디렉토리 트리 문자열이 상한을 넘으면 상위 핵심 구조 위주로 절단"""
     if len(tree_text) <= max_chars:
         return tree_text, False
 
-    lines = tree_text.splitlines(keepends=True)
-    accumulated: List[str] = []
-    current_length = 0
+    lines = tree_text.splitlines()
+    truncated_lines = []
+    current_chars = 0
 
     for line in lines:
-        if current_length + len(line) > max_chars - 100:
-            accumulated.append("\n…(디렉토리 구조 상한 초과로 하위 경로 생략)\n")
+        if current_chars + len(line) + 1 > max_chars - 300:
+            truncated_lines.append("... (하위 디렉토리 생략 - 디렉토리 트리 상한 도달)")
             break
-        accumulated.append(line)
-        current_length += len(line)
+        truncated_lines.append(line)
+        current_chars += len(line) + 1
 
-    result = "".join(accumulated)
-    logger.info(f"[DiffBudgeter] 트리 상한 절단: {len(tree_text):,}자 -> {len(result):,}자")
-    return result, True
+    return "\n".join(truncated_lines), True

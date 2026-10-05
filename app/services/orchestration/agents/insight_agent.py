@@ -100,6 +100,27 @@ class InsightAgent:
         impl_summary = "\n".join([f"- {x}" for x in proj_summary.get("implemented", [])])
         not_impl_summary = "\n".join([f"- {x}" for x in proj_summary.get("notImplemented", [])])
 
+        # v3 메타데이터 및 인프라 요약 추출
+        migration_meta = verified_feature_result.get("migrationMeta", {})
+        migration_str = ""
+        if migration_meta:
+            migration_str = (
+                f"- 총 수정 파일: {migration_meta.get('totalFilesModified', 0)}개\n"
+                f"- 대규모 리팩토링 여부: {migration_meta.get('isLargeScale', False)}\n"
+                f"- 범위 맥락: {migration_meta.get('scopeDescription', '')}"
+            )
+
+        infra_work = verified_feature_result.get("infraAndDevOps", {})
+        infra_str = ""
+        if infra_work and infra_work.get("hasInfraWork"):
+            techs = ", ".join(infra_work.get("technologies", []))
+            files = ", ".join(infra_work.get("keyFiles", []))
+            infra_str = (
+                f"- 인프라 기술: {techs}\n"
+                f"- 핵심 기여: {infra_work.get('summary', '')}\n"
+                f"- 관련 설정 파일: {files}"
+            )
+
         prompt = get_insight_analysis_prompt(
             repo_url=repo_url,
             author_name=author_name,
@@ -111,6 +132,8 @@ class InsightAgent:
             verified_features_summary=verified_features_str,
             implemented_summary=impl_summary,
             not_implemented_summary=not_impl_summary,
+            migration_metadata_summary=migration_str,
+            infra_contributions_summary=infra_str,
         )
 
         logger.info(f"[InsightAgent] Stage 2 분석 시작 (모델: {self.model_name})")

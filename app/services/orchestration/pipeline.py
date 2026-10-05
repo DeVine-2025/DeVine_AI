@@ -71,6 +71,8 @@ class OrchestrationPipeline:
         development_period: str,
         available_techstacks: Optional[List[str]] = None,
         author_modified_files: Optional[List[str]] = None,
+        change_metadata: str = "",
+        infra_changes: str = "",
     ) -> OrchestrationResult:
         start_time = time.time()
         metrics = OrchestrationMetrics()
@@ -105,7 +107,8 @@ class OrchestrationPipeline:
         # Pre-flight Worst-Case 예산 사전 검사 (호출 전 차단/모니터링)
         total_prompt_chars = (
             len(repo_url) + len(tech_stack) + len(budgeted_tree) +
-            len(commit_messages) + len(budgeted_file_changes) + len(other_contributors)
+            len(commit_messages) + len(budgeted_file_changes) + len(infra_changes) +
+            len(change_metadata) + len(other_contributors)
         )
         est_tokens = int(total_prompt_chars * 0.35)
         worst_case_cost = round((est_tokens * 0.30 + 8192 * 2.50) / 1_000_000, 4)
@@ -135,6 +138,8 @@ class OrchestrationPipeline:
             file_changes=budgeted_file_changes,
             other_contributors=other_contributors,
             available_techstacks=available_techstacks,
+            change_metadata=change_metadata,
+            infra_changes=infra_changes,
         )
         metrics.stage1_elapsed_sec = round(time.time() - stage1_start, 2)
         metrics.stage1_tokens = stage1_tokens
@@ -217,6 +222,8 @@ class OrchestrationPipeline:
             "implementedFeatures": stage1.get("implementedFeatures", []),
             "projectSummary": stage1.get("projectSummary", {}),
             "codeInsights": stage1.get("codeInsights", []),
+            "migrationMeta": stage1.get("migrationMeta", {}),
+            "infraAndDevOps": stage1.get("infraAndDevOps", {}),
             "improvements": stage2.get("improvements", []),
             "nextSteps": stage2.get("nextSteps", []),
         }
