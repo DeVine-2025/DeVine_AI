@@ -1,77 +1,129 @@
-import json
+import asyncio
 import logging
-import re
+import json
 from google import genai
-from google.genai import types
-
+from google.genai import types, errors
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 from app.configs.settings import settings
 from app.services.orchestration.schemas.insight_schema import INSIGHT_SCHEMA
-from app.services.orchestration.prompts.insight_prompt import INSIGHT_SYNTHESIS_PROMPT
+from app.services.orchestration.prompts.insight_prompt import get_insight_analysis_prompt
+from app.services.gemini_service import gemini_service
+from app.errors.exceptions import GeminiException
 
 logger = logging.getLogger(__name__)
 
+client = genai.Client(api_key=settings.gemini_api_key)
+
 
 class InsightAgent:
-    """Stage 2: 1단계 추출 결과 기반 메인 리포트 요약 및 상세 리포트 생성 에이전트"""
+    """
+    Stage 2: 인사이트 생성 에이전트 (Evaluation & Synthesis)
+    Stage 1에서 검증된 정제된 기능 목록과 코드 인사이트만을 바탕으로
+    개발자 평가, 프로젝트 개요, 개선점 및 향후 단계를 도출합니다.
+    """
+
+    SYSTEM_INSTRUCTION = (
+        "You are an executive engineering manager and principal tech evaluator. "
+        "Provide insightful, professional evaluation grounded in verified implementation facts. "
+        "Write all natural language descriptions in Korean (한국어)."
+    )
 
     def __init__(self, model_name: str = "gemini-2.5-flash"):
         self.model_name = model_name
 
-    async def execute(
+    STAGE2_TIMEOUT_SECONDS = 45
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(errors.ServerError),
+        reraise=True,
+    )
+    async def _generate_content(self, prompt: str) -> tuple[dict, object]:
+        try:
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.SYSTEM_INSTRUCTION,
+                        response_mime_type="application/json",
+                        response_schema=INSIGHT_SCHEMA,
+                    ),
+                ),
+                timeout=self.STAGE2_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError as e:
+            logger.error(f"[InsightAgent] Stage 2 타임아웃 발생 ({self.STAGE2_TIMEOUT_SECONDS}초 초과)")
+            raise GeminiException(f"Stage 2 LLM 호출 시간 초과 ({self.STAGE2_TIMEOUT_SECONDS}s)") from e
+
+        parsed = gemini_service._parse_json_response(response.text)
+        return parsed, response.usage_metadata
+
+    async def analyze(
         self,
         repo_url: str,
         author_name: str,
-        total_commits: int,
-        user_commits: int,
-        contribution_ratio: float,
         total_files: int,
         total_lines: int,
         development_period: str,
-        stage1_output: dict,
-        available_techstacks: list = None,
-    ) -> dict:
-        client = genai.Client(api_key=settings.gemini_api_key)
+        verified_feature_result: dict,
+    ) -> tuple[dict, dict]:
+        """
+        Stage 2 분석 실행
+        Returns: (분석 결과 딕셔너리, 토큰 사용량 정보)
+        """
+        # Stage 1에서 검증된 데이터를 읽기 쉬운 요약 문자열로 포맷팅
+        author_techstacks = ", ".join(verified_feature_result.get("techstacks", []))
 
-        prompt = INSIGHT_SYNTHESIS_PROMPT.format(
+        key_impls = verified_feature_result.get("keyImplementations", [])
+        key_impls_str = "\n".join([
+            f"- {item.get('title')}: {item.get('description')} (역량: {', '.join(item.get('capabilities', []))})"
+            for item in key_impls
+        ])
+
+        categories = verified_feature_result.get("implementedFeatures", [])
+        cat_lines = []
+        for cat in categories:
+            cat_lines.append(f"[{cat.get('category')}]")
+            for f in cat.get("features", []):
+                locs = ", ".join(f.get("codeLocation", []))
+                cat_lines.append(f"  * {f.get('name')}: {'; '.join(f.get('implementation', []))} (위치: {locs})")
+        verified_features_str = "\n".join(cat_lines)
+
+        proj_summary = verified_feature_result.get("projectSummary", {})
+        impl_summary = "\n".join([f"- {x}" for x in proj_summary.get("implemented", [])])
+        not_impl_summary = "\n".join([f"- {x}" for x in proj_summary.get("notImplemented", [])])
+
+        prompt = get_insight_analysis_prompt(
             repo_url=repo_url,
             author_name=author_name,
-            total_commits=total_commits,
-            user_commits=user_commits,
-            contribution_ratio=contribution_ratio,
             total_files=total_files,
             total_lines=total_lines,
             development_period=development_period,
-            available_techstacks=json.dumps(available_techstacks or [], ensure_ascii=False),
-            stage1_json=json.dumps(stage1_output, ensure_ascii=False, indent=2),
+            author_techstacks=author_techstacks,
+            key_implementations_summary=key_impls_str,
+            verified_features_summary=verified_features_str,
+            implemented_summary=impl_summary,
+            not_implemented_summary=not_impl_summary,
         )
 
-        logger.info(f"[InsightAgent] Stage 2 호출 시작 (모델: {self.model_name})")
+        logger.info(f"[InsightAgent] Stage 2 분석 시작 (모델: {self.model_name})")
+        parsed, usage = await self._generate_content(prompt)
 
-        response = await client.aio.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=INSIGHT_SCHEMA,
-                temperature=0.3,
-            ),
+        usage_info = {
+            "prompt_tokens": getattr(usage, "prompt_token_count", 0),
+            "candidates_tokens": getattr(usage, "candidates_token_count", 0),
+            "total_tokens": getattr(usage, "total_token_count", 0),
+        }
+        logger.info(
+            f"[InsightAgent] Stage 2 완료 - 입력: {usage_info['prompt_tokens']}, "
+            f"출력: {usage_info['candidates_tokens']}, 합계: {usage_info['total_tokens']}"
         )
 
-        response_text = response.text
-        json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response_text)
-        if json_match:
-            response_text = json_match.group(1)
-
-        result = json.loads(response_text)
-        usage = response.usage_metadata
-        token_usage = {
-            "prompt_token_count": usage.prompt_token_count if usage else 0,
-            "candidates_token_count": usage.candidates_token_count if usage else 0,
-            "total_token_count": usage.total_token_count if usage else 0,
-        }
-
-        logger.info(f"[InsightAgent] Stage 2 완료. 입력 토큰: {token_usage['prompt_token_count']}, 출력 토큰: {token_usage['candidates_token_count']}")
-        return {
-            "data": result,
-            "token_usage": token_usage,
-        }
+        return parsed, usage_info

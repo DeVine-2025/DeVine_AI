@@ -1,23 +1,71 @@
-import json
+import asyncio
 import logging
-import re
+import json
 from google import genai
-from google.genai import types
-
+from google.genai import types, errors
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 from app.configs.settings import settings
 from app.services.orchestration.schemas.feature_schema import FEATURE_SCHEMA
-from app.services.orchestration.prompts.feature_prompt import FEATURE_EXTRACTION_PROMPT
+from app.services.orchestration.prompts.feature_prompt import get_feature_analysis_prompt
+from app.services.gemini_service import gemini_service
+from app.errors.exceptions import GeminiException
 
 logger = logging.getLogger(__name__)
 
+client = genai.Client(api_key=settings.gemini_api_key)
+
 
 class FeatureAgent:
-    """Stage 1: 전체 diff/tree에서 기여 기능 및 파일 경로 1차 추출 에이전트"""
+    """
+    Stage 1: 기능 분석 에이전트 (Fact & Code Analysis)
+    Git diff, 커밋 로그, 파일 트리를 분석하여 실제 구현 기능, 기술 스택, 파일 위치를 사실 기반으로 추출합니다.
+    """
+
+    SYSTEM_INSTRUCTION = (
+        "You are an expert technical code auditor. "
+        "Strictly analyze only code contributions actually made by the author. "
+        "Do not invent non-existent features or exaggerate contributions. "
+        "Write all natural language descriptions in Korean (한국어)."
+    )
 
     def __init__(self, model_name: str = "gemini-2.5-flash"):
         self.model_name = model_name
 
-    async def execute(
+    STAGE1_TIMEOUT_SECONDS = 75
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(errors.ServerError),
+        reraise=True,
+    )
+    async def _generate_content(self, prompt: str) -> tuple[dict, object]:
+        try:
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.SYSTEM_INSTRUCTION,
+                        response_mime_type="application/json",
+                        response_schema=FEATURE_SCHEMA,
+                    ),
+                ),
+                timeout=self.STAGE1_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError as e:
+            logger.error(f"[FeatureAgent] Stage 1 타임아웃 발생 ({self.STAGE1_TIMEOUT_SECONDS}초 초과)")
+            raise GeminiException(f"Stage 1 LLM 호출 시간 초과 ({self.STAGE1_TIMEOUT_SECONDS}s)") from e
+
+        parsed = gemini_service._parse_json_response(response.text)
+        return parsed, response.usage_metadata
+
+    async def analyze(
         self,
         repo_url: str,
         author_name: str,
@@ -32,10 +80,13 @@ class FeatureAgent:
         commit_messages: str,
         file_changes: str,
         other_contributors: str,
-    ) -> dict:
-        client = genai.Client(api_key=settings.gemini_api_key)
-
-        prompt = FEATURE_EXTRACTION_PROMPT.format(
+        available_techstacks: list = None,
+    ) -> tuple[dict, dict]:
+        """
+        Stage 1 분석 실행
+        Returns: (분석 결과 딕셔너리, 토큰 사용량 정보)
+        """
+        prompt = get_feature_analysis_prompt(
             repo_url=repo_url,
             author_name=author_name,
             total_commits=total_commits,
@@ -49,35 +100,20 @@ class FeatureAgent:
             commit_messages=commit_messages,
             file_changes=file_changes,
             other_contributors=other_contributors,
+            available_techstacks=available_techstacks,
         )
 
-        logger.info(f"[FeatureAgent] Stage 1 호출 시작 (모델: {self.model_name})")
-
-        response = await client.aio.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=FEATURE_SCHEMA,
-                temperature=0.2,
-            ),
+        logger.info(f"[FeatureAgent] Stage 1 분석 시작 (모델: {self.model_name})")
+        parsed, usage = await self._generate_content(prompt)
+        
+        usage_info = {
+            "prompt_tokens": getattr(usage, "prompt_token_count", 0),
+            "candidates_tokens": getattr(usage, "candidates_token_count", 0),
+            "total_tokens": getattr(usage, "total_token_count", 0),
+        }
+        logger.info(
+            f"[FeatureAgent] Stage 1 완료 - 입력: {usage_info['prompt_tokens']}, "
+            f"출력: {usage_info['candidates_tokens']}, 합계: {usage_info['total_tokens']}"
         )
 
-        response_text = response.text
-        json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response_text)
-        if json_match:
-            response_text = json_match.group(1)
-
-        result = json.loads(response_text)
-        usage = response.usage_metadata
-        token_usage = {
-            "prompt_token_count": usage.prompt_token_count if usage else 0,
-            "candidates_token_count": usage.candidates_token_count if usage else 0,
-            "total_token_count": usage.total_token_count if usage else 0,
-        }
-
-        logger.info(f"[FeatureAgent] Stage 1 완료. 입력 토큰: {token_usage['prompt_token_count']}, 출력 토큰: {token_usage['candidates_token_count']}")
-        return {
-            "data": result,
-            "token_usage": token_usage,
-        }
+        return parsed, usage_info
