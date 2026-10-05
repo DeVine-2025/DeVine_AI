@@ -1,53 +1,108 @@
-# Stage 1: Feature Extraction Prompt
+# Stage 1: Feature & Code Analysis Prompt
 
-FEATURE_EXTRACTION_PROMPT = """당신은 개발자의 Git 커밋 히스토리와 코드 변경사항을 분석하여 구현 기능과 기술 스택을 정확하게 추출하는 전문 분석 에이전트입니다.
+FEATURE_ANALYSIS_PROMPT = """\
+You are an expert software engineer and code auditor.
+Your mission is to perform a strict, fact-based code analysis of contributions made by "{author_name}" in the repository "{repo_url}".
 
-다음 정보를 바탕으로 {author_name} 개발자의 기여 내용을 정밀하게 분석하십시오.
+=== Repository Information ===
+Repository: {repo_url}
+Total Commits: {total_commits}
+Commits by {author_name}: {user_commits}
+Contribution Ratio: {contribution_ratio:.1f}%
 
-## 프로젝트 정보
-- 저장소: {repo_url}
-- 분석 대상: {author_name}
-- 커밋 기여: 전체 {total_commits}개 중 {user_commits}개 ({contribution_ratio:.1f}%)
-- 추가/삭제: +{lines_added:,} / -{lines_deleted:,} 라인
-- 변경 파일 수: {files_modified}개
-
-## 감지된 기술 스택
+=== Detected Tech Stack & Enums ===
+Detected Tech Stack:
 {tech_stack}
 
-## 프로젝트 디렉터리 구조
+Available Techstack Enum Values:
+{available_techstacks}
+
+=== Project Structure (Full Depth) ===
 {tree_structure}
 
-## 커밋 메시지 히스토리
+=== Code Change Statistics for {author_name} ===
+Total Lines Added: {lines_added}
+Total Lines Deleted: {lines_deleted}
+Files Modified: {files_modified}
+
+=== Commit Messages by {author_name} ===
 {commit_messages}
 
-## 주요 코드 변경 내역 (Diff)
+=== Files Modified and Code Diffs/Changes by {author_name} ===
 {file_changes}
 
-## 다른 기여자 현황 (본인 기여와 명확히 구분할 것)
+=== Other Contributors ===
 {other_contributors}
 
----
+============================================================
+CRITICAL INSTRUCTIONS & ACCURACY RULES:
+============================================================
+1. FACT-BASED ONLY (NO HALLUCINATION):
+   - Only describe features that {author_name} ACTUALLY implemented based on the commit messages and code changes provided.
+   - Do NOT invent or exaggerate features that are not explicitly present in the code diffs or commit history.
+   - If {author_name} only fixed a bug or styled a component, describe exactly that. Do NOT claim they built the entire subsystem.
 
-## 분석 지침
+2. STRICT AUTHOR ATTRIBUTION (DO NOT ATTRIBUTE OTHER'S WORK):
+   - Examine "Other Contributors" and file diffs carefully.
+   - If a file or architecture was created by another contributor and {author_name} only imported or modified a small part, clearly distinguish it.
+   - In "projectSummary":
+     - "implemented": list 3 to 5 features that {author_name} personally built.
+     - "notImplemented": list 1 to 3 features in this repository that were built by OTHER contributors (NOT {author_name}).
 
-1. **기술 스택 (techstacks)**:
-   - 감지된 기술 스택 중 {author_name} 개발자가 **직접 작성하거나 수정한 코드에서 실제로 사용한 기술**만 선택하십시오.
-   - 프로젝트 전체에는 존재하지만 해당 개발자가 사용하지 않은 기술은 제외하십시오.
+3. ACCURATE FILE PATHS (CRITICAL):
+   - Every "codeLocation" path MUST EXACTLY MATCH a real file path present in the "Project Structure" tree above.
+   - Do NOT use shortened paths, aliases, or guess non-existent directories.
+   - Do NOT reference files that were deleted or renamed in past commits if they no longer exist in the current project structure.
 
-2. **구현 기능 (implementedFeatures)**:
-   - 개발자가 직접 구현한 기능을 3~5개 카테고리로 분류하십시오.
-   - 각 기능별로 구현 내용 요약, 세부 설명, 그리고 **반드시 실제 변경된 코드 파일 경로(codeLocation)**를 포함하십시오.
-   - codeLocation에는 상기 코드 변경 내역에 실제로 존재하는 파일 경로만 기재해야 합니다.
+4. STRICT ARRAY BOUNDS & QUANTITY CAPS (STRICT BOUNDS - DO NOT EXCEED):
+   - keyImplementations: exactly 2 to 3 items, each with title, description, and 2 to 3 capabilities.
+   - implementedFeatures: exactly 3 to 4 categories, each with 2 to 3 features.
+   - implementedFeatures[].features[].codeLocation: exactly 1 to 3 KEY files only. Do NOT list minor helper files, secondary types, or icons.
+   - TOTAL codeLocation paths across the entire report MUST BE BETWEEN 15 AND 25 FILES. Do NOT exceed 25 file paths in total.
+   - projectSummary.implemented: exactly 3 to 4 items.
+   - projectSummary.notImplemented: exactly 2 to 3 items.
+   - codeInsights: exactly 2 to 3 items, each with 2 to 3 points and 1 to 2 key codeLocation paths.
+   - techstacks: array of enum strings that {author_name} directly used (e.g. ["TYPESCRIPT", "REACT", "NEXTJS"]).
 
-3. **핵심 구현 (keyImplementations)**:
-   - 개발자의 가장 중요하고 기술적으로 도전적인 구현 2~3개를 선별하십시오.
-   - 각 구현의 기술적 의의와 관련 태그를 명시하십시오.
-
-4. **코드 인사이트 (codeInsights)**:
-   - 개발자의 코드 품질, 아키텍처적 고려사항, 디자인 패턴, 성능 최적화 등을 2~3개 도출하십시오.
-
-5. **본인 vs 타인 기여 구분 (myFeatures / otherFeatures)**:
-   - {author_name} 개발자가 직접 구현한 기능 목록과, 다른 기여자가 구현한 기능 목록을 명확히 구분하십시오.
-
-결과는 반드시 지정된 JSON 스키마를 엄격히 준수하여 출력하십시오.
+Respond in valid JSON conforming to the requested schema. Write all descriptive text in Korean (한국어).
 """
+
+
+def get_feature_analysis_prompt(
+    repo_url: str,
+    author_name: str,
+    total_commits: int,
+    user_commits: int,
+    contribution_ratio: float,
+    tech_stack: str,
+    tree_structure: str,
+    lines_added: int,
+    lines_deleted: int,
+    files_modified: int,
+    commit_messages: str,
+    file_changes: str,
+    other_contributors: str,
+    available_techstacks: list = None,
+) -> str:
+    techstacks_str = (
+        ", ".join(available_techstacks)
+        if available_techstacks
+        else "No techstacks provided"
+    )
+
+    return FEATURE_ANALYSIS_PROMPT.format(
+        repo_url=repo_url,
+        author_name=author_name,
+        total_commits=total_commits,
+        user_commits=user_commits,
+        contribution_ratio=contribution_ratio,
+        tech_stack=tech_stack,
+        tree_structure=tree_structure,
+        lines_added=lines_added,
+        lines_deleted=lines_deleted,
+        files_modified=files_modified,
+        commit_messages=commit_messages,
+        file_changes=file_changes,
+        other_contributors=other_contributors,
+        available_techstacks=techstacks_str,
+    )

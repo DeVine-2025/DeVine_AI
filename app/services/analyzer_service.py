@@ -26,10 +26,12 @@ from app.services.callback_service import callback_service
 from app.services.embedding_service import embedding_service
 from app.utils.file_reader import get_code_files, count_lines, count_test_files
 from app.utils.tech_detector import detect_tech_stack
-from app.utils.tree_builder import build_project_tree
+from app.utils.tree_builder import build_project_tree, get_all_relative_file_paths
 from app.utils.text_processor import extract_embedding_text
 from app.prompts.combined_report_prompt import get_combined_report_prompt
 from app.errors.exceptions import AuthorMatchException
+from app.services.orchestration.pipeline import OrchestrationPipeline
+from app.utils.diff_budgeter import budget_file_changes, budget_tree_structure
 
 logger = logging.getLogger(__name__)
 
@@ -199,11 +201,13 @@ class AnalyzerService:
             )
             logger.info(f"{log_prefix} 임베딩 콜백 전송 완료 (FAILED)")
 
-    def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None, author_emails: list = None) -> str:
+    def _extract_analysis_context_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None, author_emails: list = None) -> dict:
         tech_stack = detect_tech_stack(dir_path)
         tech_stack_str = json.dumps(tech_stack, ensure_ascii=False, indent=2)
 
-        tree_structure = build_project_tree(dir_path)
+        tree_raw = build_project_tree(dir_path, max_depth=8)
+        tree_structure, _ = budget_tree_structure(tree_raw)
+        valid_paths = get_all_relative_file_paths(dir_path)
 
         code_files = get_code_files(dir_path)
         total_files = len(code_files)
@@ -236,11 +240,13 @@ class AnalyzerService:
             contributor_changes["commitMessages"][:limits.max_commit_messages]
         )
 
-        file_changes = self._format_file_changes(
+        file_changes, _ = budget_file_changes(
             contributor_changes["files"],
-            max_files=limits.max_files,
-            max_commits_per_file=limits.max_commits_per_file
+            max_files=min(limits.max_files, 45),
+            max_commits_per_file=min(limits.max_commits_per_file, 8)
         )
+
+        author_modified_files = [f["path"] for f in contributor_changes["files"]]
 
         other_contributors = get_all_contributors_summary(dir_path, exclude_author=author_name, exclude_emails=author_emails)
         other_contributors_str = "\n".join([
@@ -251,30 +257,86 @@ class AnalyzerService:
         development_period = get_development_period(dir_path)
         test_code_count = count_test_files(dir_path)
 
-        prompt = get_combined_report_prompt(
-            repo_url=repo_url,
-            author_name=author_name,
-            total_commits=total_commits,
-            user_commits=user_commits,
-            contribution_ratio=contribution_ratio,
-            tech_stack=tech_stack_str,
-            total_files=total_files,
-            total_lines=total_lines,
-            tree_structure=tree_structure,
-            lines_added=contributor_changes["stats"]["totalAdded"],
-            lines_deleted=contributor_changes["stats"]["totalDeleted"],
-            files_modified=contributor_changes["stats"]["filesModified"],
-            commit_messages=commit_messages,
-            file_changes=file_changes,
-            other_contributors=other_contributors_str,
-            development_period=development_period,
-            test_code_count=test_code_count,
-            available_techstacks=available_techstacks
-        )
+        return {
+            "repo_url": repo_url,
+            "author_name": author_name,
+            "total_commits": total_commits,
+            "user_commits": user_commits,
+            "contribution_ratio": contribution_ratio,
+            "tech_stack": tech_stack_str,
+            "total_files": total_files,
+            "total_lines": total_lines,
+            "tree_structure": tree_structure,
+            "valid_paths": valid_paths,
+            "lines_added": contributor_changes["stats"]["totalAdded"],
+            "lines_deleted": contributor_changes["stats"]["totalDeleted"],
+            "files_modified": contributor_changes["stats"]["filesModified"],
+            "commit_messages": commit_messages,
+            "file_changes": file_changes,
+            "author_modified_files": author_modified_files,
+            "other_contributors": other_contributors_str,
+            "development_period": development_period,
+            "test_code_count": test_code_count,
+            "available_techstacks": available_techstacks,
+        }
 
+    def _analyze_contributor_sync(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None, author_emails: list = None) -> str:
+        ctx = self._extract_analysis_context_sync(dir_path, repo_url, author_name, author_email, available_techstacks, author_emails)
+        prompt = get_combined_report_prompt(
+            repo_url=ctx["repo_url"],
+            author_name=ctx["author_name"],
+            total_commits=ctx["total_commits"],
+            user_commits=ctx["user_commits"],
+            contribution_ratio=ctx["contribution_ratio"],
+            tech_stack=ctx["tech_stack"],
+            total_files=ctx["total_files"],
+            total_lines=ctx["total_lines"],
+            tree_structure=ctx["tree_structure"],
+            lines_added=ctx["lines_added"],
+            lines_deleted=ctx["lines_deleted"],
+            files_modified=ctx["files_modified"],
+            commit_messages=ctx["commit_messages"],
+            file_changes=ctx["file_changes"],
+            other_contributors=ctx["other_contributors"],
+            development_period=ctx["development_period"],
+            test_code_count=ctx["test_code_count"],
+            available_techstacks=ctx["available_techstacks"]
+        )
         return prompt
 
     async def _analyze_contributor(self, dir_path: str, repo_url: str, author_name: str, author_email: str, available_techstacks: list = None, author_emails: list = None) -> dict:
+        if settings.use_orchestration:
+            logger.info("[analyzer_service] 2단계 오케스트레이션 파이프라인(PoC) 실행")
+            ctx = await asyncio.to_thread(
+                self._extract_analysis_context_sync, dir_path, repo_url, author_name, author_email, available_techstacks, author_emails
+            )
+            pipeline = OrchestrationPipeline(
+                feature_model=settings.orchestration_feature_model,
+                insight_model=settings.orchestration_insight_model
+            )
+            orch_result = await pipeline.execute(
+                repo_url=ctx["repo_url"],
+                author_name=ctx["author_name"],
+                total_commits=ctx["total_commits"],
+                user_commits=ctx["user_commits"],
+                contribution_ratio=ctx["contribution_ratio"],
+                tech_stack=ctx["tech_stack"],
+                tree_structure=ctx["tree_structure"],
+                valid_paths=ctx["valid_paths"],
+                lines_added=ctx["lines_added"],
+                lines_deleted=ctx["lines_deleted"],
+                files_modified=ctx["files_modified"],
+                commit_messages=ctx["commit_messages"],
+                file_changes=ctx["file_changes"],
+                other_contributors=ctx["other_contributors"],
+                total_files=ctx["total_files"],
+                total_lines=ctx["total_lines"],
+                development_period=ctx["development_period"],
+                available_techstacks=ctx["available_techstacks"],
+                author_modified_files=ctx["author_modified_files"],
+            )
+            return orch_result.report
+
         prompt = await asyncio.to_thread(
             self._analyze_contributor_sync, dir_path, repo_url, author_name, author_email, available_techstacks, author_emails
         )
